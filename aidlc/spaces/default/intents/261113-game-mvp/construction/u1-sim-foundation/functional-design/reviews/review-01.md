@@ -1,0 +1,33 @@
+## Review
+
+**Verdict:** NOT-READY
+**Reviewer:** aidlc-architecture-reviewer-agent
+**Date:** 2026-11-14T17:31:01Z
+**Iteration:** 1
+**Verdict Dictated:** no
+
+### Findings
+
+| ID | Severity | Location | Finding | Required action | Status |
+|---|---|---|---|---|---|
+| R-01 | Major | aidlc/spaces/default/intents/261113-game-mvp/construction/u1-sim-foundation/functional-design/functional-spec.md > GameClock speed state machine (`setPaused(false)--> running (restores last nonzero speed, default 1)`) | The transition restores a "last nonzero speed" that is stored nowhere: `entities.md` defines `GameClock` as only `gameDay, gameHour, speed, paused`, and BR1.3 (`IF paused is set true THEN speed becomes 0`) destroys the prior speed, so a developer cannot implement the restore and the stated `default 1` fallback contradicts the `restores` promise. | Add a `lastSpeed` (or equivalent) field to `GameClock` in `entities.md` with a rule for when it is written, or rewrite the transition to a fixed deterministic target (e.g. always speed 1) and align BR1.3 accordingly. | New |
+| R-02 | Major | aidlc/spaces/default/intents/261113-game-mvp/construction/u1-sim-foundation/functional-design/entities.md > `Fish.tankId` (Q2-B) vs `contract-summary.md` C1 cross-boundary fields and C3 example | `entities.md` makes `Fish.tankId` authoritative and drops `Tank.fishIds`, but `contract-summary.md` C1 lists `Fish` cross-boundary fields without `tankId`, and the C3 `buyFish` example still reads `state.tank.fishIds.length` for the TANK_FULL check, so the capacity check has two contradictory sources and the contract reader never learns `tankId` exists. | Record `tankId` as an additive `Fish` field in the contract (C1 row) and correct the C3 example to the scan-based capacity check, or reconcile the design back to the contracted shape. | New |
+| R-03 | Major | aidlc/spaces/default/intents/261113-game-mvp/construction/u1-sim-foundation/functional-design/entities.md > Summary claim that cross-unit types are "declared here" | The file states cross-unit types (`Tank`, `Fish`, `FoodItem`, `FryCohort`, `MarketState`, `Order`, `PlayerProgression`, `Notification`) are "declared here and behaviourally owned elsewhere", but the YAML source-of-truth block defines only `GameState`, `GameClock`, `RngState`, `Species`, `Settings`, `SaveEnvelope`, `SlotInfo`, so the shared schema U1 supposedly defines once cannot be built from this file and a developer must guess field shapes from prose references. | Either include the full attribute declarations for every cross-unit type in the YAML block, or correct the claim and name the authoritative declaration site for each type (contract vs owning unit) so there is exactly one source of truth. | New |
+| R-04 | Minor | aidlc/spaces/default/intents/261113-game-mvp/construction/u1-sim-foundation/functional-design/functional-spec.md > W2 step 2 ("one-tick bioload lag read as stored") | The phrase introduces a lagged-bioload read with no backing entity attribute, rule, or workflow step: no `Tank` field stores a lagged value and no rule defines the lag, so it is unimplementable as written. | Define the lag field and its update rule in `entities.md`/`rules.md`, or delete the phrase so W2 reads only stored `bioload`. | New |
+| R-05 | Minor | aidlc/spaces/default/intents/261113-game-mvp/construction/u1-sim-foundation/functional-design/rules.md > BR1.3 violation (`fails validation on load with INVALID_SHAPE`) vs functional-spec.md W5 import pipeline | BR1.3 promises load-time rejection of `paused != (speed == 0)` states, but W5 (`parse → shape → version → checksum → migrate → rollback`) lists no clock-invariant check and the C6 import order has no such step, so it is unclear when or by which check the invariant is enforced. | Add the clock-invariant validation as an explicit step in W5 (and its position relative to checksum/migrate), or move the guarantee to a stated shape-validation rule. | New |
+| R-06 | Minor | aidlc/spaces/default/intents/261113-game-mvp/construction/u1-sim-foundation/functional-design/entities.md > `SaveEnvelope.checksum` attribute (`type: object`) | The checksum attribute is typed only as `object` with a prose constraint, while C6 defines it as `{ algorithm: SHA-256, scope, value: lowercase hex }`, so a developer building from `entities.md` alone cannot produce the digest fields. | Expand the checksum declaration into its three sub-fields with types and constraints matching C6. | New |
+| R-07 | Minor | aidlc/spaces/default/intents/261113-game-mvp/construction/u1-sim-foundation/functional-design/functional-spec.md > W4 `deleteSlot` and W6 "stop the clock" | W4 lists `deleteSlot(ref)` with no covering rule for its semantics (missing slot, deleting the active save), and W6 "stop the clock" never says which state that is (`speed 0` + `paused true` vs a new stopped flag), leaving two specified workflows with undefined end states. | State the `deleteSlot` outcome contract (including SLOT_NOT_FOUND and active-save behaviour) and define "stop the clock" as an explicit `speed`/`paused` assignment. | New |
+
+### Validation Tool Results
+
+| Tool | Result | Interpretation |
+|---|---|---|
+| traceability | PASS (per dispatch brief; `traceability.json` covers all 7 upstream ACs with OK targets, and every BR target resolves in `rules.md`) | No coverage gap; not evidence for or against the findings above. |
+| linter | NOT APPLICABLE (no TS/JS snippets in the artifacts to lint) | Nothing to run; noted rather than failed. |
+| type-check | NOT APPLICABLE (no TS/JS files in scope) | Nothing to run; noted rather than failed. |
+| required-sections | NOT RUN (shell limited to single direct framework invocations; a sensor run needs an output path write outside the single review file) | Sections verified manually instead: `entities.md`/`rules.md` carry YAML source-of-truth blocks with summaries, `functional-spec.md` carries workflows, state machines, derived ER diagram and rules summary. |
+| upstream-coverage | NOT RUN (same shell limitation) | Verified manually instead: FR9–FR11 and NFR3–NFR4 map to BRs; US9.1–US11.1 are implemented per the spec header; contract C1–C6 boundaries are addressed except for the `Fish.tankId` mismatch reported above. |
+
+### Summary
+
+The workflows, phase order, drain-then-bump discipline, and save/catch-up pipelines are coherent and traceable, but the design is not yet buildable without guessing: the clock state machine needs unstored state, the `Fish.tankId` membership contradicts the contract's `Fish` fields and `Tank.fishIds` example, and the shared schema claims declarations it does not contain.

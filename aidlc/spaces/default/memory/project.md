@@ -68,3 +68,4 @@
 
 <!-- Project-specific corrections from human feedback. -->
 <!-- Format: NEVER/ALWAYS [behavior] (learned [date]) -->
+- pass mutable state into systems and command handlers, signal a rejected command with a returned outcome union instead of an exception, and serve tick and command events from one buffer with a single drain (learned 2026-11-14) <!-- cid:261113-game-mvp:contract-design:e900095e6e5ca9841a605b6e51fcc25ed0d000874ad464e61b48b5935623d508 -->
