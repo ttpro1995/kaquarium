@@ -1,0 +1,14 @@
+{
+  "name": "@aquarium/u4-feeding",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@aquarium/u1-sim-foundation": "^0.1.0",
+    "@aquarium/u2-tank-water": "^0.1.0"
+  }
+}

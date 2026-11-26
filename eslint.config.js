@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    files: ['packages/u1-sim-foundation/src/**/*.ts'],
+    files: ['packages/*/src/**/*.ts'],
     extends: [tseslint.configs.base],
     rules: {
       'no-restricted-properties': [
@@ -24,7 +24,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['packages/u1-sim-foundation/tests/**/*.ts'],
+    files: ['packages/*/tests/**/*.ts'],
     extends: [tseslint.configs.base],
     rules: {
       // Tests may use timers and dates for fixtures; sim ban does not apply.

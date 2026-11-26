@@ -53,6 +53,8 @@ export interface Species {
   schooling: number;
   territorial: number;
   layer: TankLayer;
+  /** U1 data completion (U2 reads): optional [min, max] °C; absent means tolerant 20-28. */
+  tempRangeC?: readonly [number, number];
 }
 
 export interface Settings {
@@ -65,6 +67,8 @@ export interface Settings {
 
 export type FishId = string;
 export type TankId = string;
+export type CohortId = string;
+export type PairId = string;
 
 export interface Fish {
   id: FishId;
@@ -78,14 +82,42 @@ export interface Fish {
   satiety: number;
   stress: number;
   genome: Record<string, unknown>;
+  /** U5 data completion (U2 migration fills): permanent first-food penalty. */
+  stunted: boolean;
   value: number;
   mature: boolean;
 }
 
 export interface TankWater {
   waste: number;
-  temperature: number;
-  ph: number;
+  nitrate: number;
+  tempC: number;
+}
+
+export type WaterQualityBand = 'good' | 'fair' | 'poor';
+
+export interface FilterSpec {
+  level: 1 | 2 | 3;
+  conversionRate: number;
+}
+
+export interface HeaterSpec {
+  installed: boolean;
+}
+
+export interface AutoFeederDevice {
+  installed: boolean;
+}
+
+export interface LightSpec {
+  level: 1 | 2 | 3;
+}
+
+export interface Equipment {
+  filter: FilterSpec;
+  heater: HeaterSpec;
+  autoFeeder: AutoFeederDevice;
+  light: LightSpec;
 }
 
 export interface Tank {
@@ -93,10 +125,26 @@ export interface Tank {
   tier: number;
   volumeL: number;
   water: TankWater;
-  equipment: string[];
+  equipment: Equipment;
   bioload: number;
   biofilterMaturity: number;
+  /** Edge-trigger for fishSick; updated to the current band every water tick. */
+  prevQualityBand: WaterQualityBand;
+  /** True while a tankOvercrowded episode is open. */
+  overcrowdLatch: boolean;
+  /** True while a temperature-stress episode is open. */
+  tempPoorLatch: boolean;
 }
+
+/** Tier-to-volume pairing (BR8.6, BR9.2): the single source both U1 defaults and U2 validation read. */
+export const TIER_VOLUME_L: Record<1 | 2 | 3, number> = { 1: 20, 2: 60, 3: 150 };
+
+export function tierVolumeL(tier: number): number {
+  if (tier === 1 || tier === 2 || tier === 3) return TIER_VOLUME_L[tier];
+  throw new Error(`tierVolumeL: unknown tier ${tier}`);
+}
+
+export type CohortStage = 'eggs' | 'fry';
 
 export interface FryCohort {
   id: string;
@@ -107,7 +155,30 @@ export interface FryCohort {
   ageDays: number;
   genomePool: Record<string, unknown>;
   survivalFactor: number;
+  stage: CohortStage;
+  /** Set for eggs; fry stage begins at hatchDay. */
+  hatchDay?: number;
+  /** Distinct game days with >=1 fry feeding; written by U4 feedFry (types fixed in U5). */
+  firstFoodDays: number;
+  /** 0 = never; day idempotency key. */
+  lastFryFedDay: number;
 }
+
+/** Player-formed pair bond; all pregnancy/cooldown state lives here, never on Fish. */
+export type PairState = 'paired' | 'gravid' | 'cooling';
+
+export interface BreedingPair {
+  id: PairId;
+  femaleId: FishId;
+  maleId: FishId;
+  speciesId: string;
+  state: PairState;
+  /** Birth due (gravid) or cooldown end (cooling); attempts run while paired. */
+  readyDay: number;
+}
+
+export type FoodKind = 'flakes' | 'pellets' | 'liveFirst';
+export type FoodTarget = 'fish' | 'fry';
 
 export interface FoodItem {
   id: string;
@@ -115,6 +186,24 @@ export interface FoodItem {
   qty: number;
   quality: number;
   shelfLifeDays: number;
+  /** Game day of purchase; expiry origin (U4-added). */
+  acquiredDay: number;
+  /** liveFirst is fry-flagged; flakes/pellets are fish food (U4-added). */
+  target: FoodTarget;
+}
+
+/** Auto-feeder program; lives in GameState.feeding.schedule (null = no program). */
+export interface FeedingSchedule {
+  /** Fish-target kinds only; fry food never auto-dispenses. */
+  foodKind: string;
+  portions: number;
+  intervalHours: number;
+  /** Absolute game-hour of the last run; absolute clock, deterministic. */
+  lastRunHour: number;
+}
+
+export interface FeedingState {
+  schedule: FeedingSchedule | null;
 }
 
 export interface MarketState {
@@ -122,17 +211,28 @@ export interface MarketState {
   demand: number;
   trend: number;
   activeEvent?: string;
+  /** Game day of the last trend roll; drives the 3-day cycle. */
+  lastTrendDay: number;
 }
 
 export type OrderStatus = 'open' | 'fulfilled' | 'expired';
 
+export type OrderCustomer = 'hobbyist' | 'petShop' | 'collector';
+
 export interface Order {
   id: string;
   speciesId: string;
+  customer: OrderCustomer;
   quantity: number;
-  deadline: number;
-  minQuality: number;
+  minHealth: number;
+  /** Species market size; fulfil fish must meet it. */
+  minSizeCm: number;
+  /** 1.2 / 1.05 / 1.5 by customer; fulfil-time reward basis. */
+  multiplier: number;
+  /** Board estimate at generation; replaced by the actual fulfil-time amount on fulfil. */
   reward: number;
+  /** 3-7 days out; expiry at day boundary past deadline. */
+  deadlineDay: number;
   status: OrderStatus;
 }
 
@@ -148,7 +248,8 @@ export interface Notification {
   id: string;
   priority: NotificationPriority;
   kind: string;
-  subjectId: string;
+  /** Fish/cohort/order id the UI focuses; absent for summaries. */
+  subjectId?: string;
   message: string;
 }
 
@@ -156,10 +257,10 @@ export interface GameState {
   seed: number;
   rngState: RngState;
   clock: GameClock;
-  money: number;
-  reputation: number;
+  money: number; // $FISH, always >= 0, integer
+  reputation: number; // integer, floor 0
   progression: PlayerProgression;
-  tank: Tank;
+  tank: Tank; // the single MVP tank, behaviour owned by U2
   fish: Record<FishId, Fish>;
   cohorts: Record<string, FryCohort>;
   food: Record<string, FoodItem>;
@@ -167,6 +268,10 @@ export interface GameState {
   orders: Order[];
   notifications: Notification[];
   settings: Settings;
+  /** U5 data completion: player-formed pair bonds; pre-U5 saves gain {} from migration. */
+  pairs: Record<PairId, BreedingPair>;
+  /** U4 data completion: auto-feeder program slot; empty until programmed. */
+  feeding: FeedingState;
 }
 
 export type SlotRef =
@@ -207,11 +312,19 @@ export function defaultTank(): Tank {
   return {
     id: 'tank-1',
     tier: 1,
-    volumeL: 50,
-    water: { waste: 0, temperature: 24, ph: 7 },
-    equipment: [],
+    volumeL: 20,
+    water: { waste: 0, nitrate: 0, tempC: 24 },
+    equipment: {
+      filter: { level: 1, conversionRate: 2 },
+      heater: { installed: false },
+      autoFeeder: { installed: false },
+      light: { level: 1 },
+    },
     bioload: 0,
     biofilterMaturity: 0,
+    prevQualityBand: 'good',
+    overcrowdLatch: false,
+    tempPoorLatch: false,
   };
 }
 
@@ -233,6 +346,8 @@ export function createInitialState(seed: number, opts?: { speed?: Speed; money?:
     orders: [],
     notifications: [],
     settings: defaultSettings(),
+    pairs: {},
+    feeding: { schedule: null },
   };
 }
 

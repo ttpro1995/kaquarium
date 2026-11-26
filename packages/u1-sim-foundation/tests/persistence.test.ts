@@ -177,7 +177,7 @@ describe('species catalog + persistence (BR5.1, BR6.1-BR6.4, NFR4.1-NFR4.4)', ()
       ok: false,
       error: { code: 'MIGRATION_FAILED', message: expect.any(String) },
     });
-    expect(CURRENT_SCHEMA_VERSION).toBe(1);
+    expect(CURRENT_SCHEMA_VERSION).toBe(2);
     expect(primary).toBeDefined();
   });
 

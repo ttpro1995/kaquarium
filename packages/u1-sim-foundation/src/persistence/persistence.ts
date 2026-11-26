@@ -6,11 +6,24 @@
 // then warn and disable autosave until the next successful write.
 import { canonicalJson } from '../canonicalJson.js';
 import { sha256Hex } from './sha256.js';
+import { migrateV1ToV2 } from './migration.js';
+import { tierVolumeL } from '../types.js';
 import { replaceStoreState, type MutableStore } from '../store.js';
 import { validateClock, type GameState, type SaveEnvelope, type SlotInfo, type SlotRef } from '../types.js';
 
-export const CURRENT_SCHEMA_VERSION = 1;
+export const CURRENT_SCHEMA_VERSION = 2;
 export const CHECKSUM_SCOPE = 'schemaVersion + savedAt + playtimeMs + state';
+
+/** NFR4.3: raw save text beyond this never reaches JSON.parse. */
+export const MAX_SAVE_BYTES = 2 * 1024 * 1024;
+
+/** NFR4.3 pre-migrate count gate: inflated payloads never reach migrate or the O(fish) scan. */
+export const MAX_FISH = 1000;
+export const MAX_COHORTS = 500;
+export const MAX_ORDERS = 6;
+export const MAX_NOTIFICATIONS = 100;
+export const MAX_FOOD_STACKS = 24;
+export const MAX_PAIRS = 500;
 
 export type SaveErrorCode =
   | 'CORRUPT_JSON'
@@ -171,6 +184,265 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function inRange(value: unknown, min: number, max: number): value is number {
+  return isFiniteNumber(value) && value >= min && value <= max;
+}
+
+/** Pre-migration count gate (NFR4.3 layer 6): runs on the raw state after checksum, before migrate. */
+function countGateErrors(state: Record<string, unknown>): string[] {
+  const errors: string[] = [];
+  const counts: Array<[string, number]> = [
+    ['fish', MAX_FISH],
+    ['cohorts', MAX_COHORTS],
+    ['orders', MAX_ORDERS],
+    ['notifications', MAX_NOTIFICATIONS],
+    ['food', MAX_FOOD_STACKS],
+  ];
+  for (const [field, cap] of counts) {
+    const value = state[field];
+    const size = Array.isArray(value) ? value.length : isRecord(value) ? Object.keys(value).length : -1;
+    if (size >= 0 && size > cap) errors.push(`state.${field} exceeds the import cap of ${cap}`);
+  }
+  return errors;
+}
+
+const WATER_BANDS = new Set(['good', 'fair', 'poor']);
+const COHORT_STAGES = new Set(['eggs', 'fry']);
+const FOOD_KINDS = new Set(['flakes', 'pellets', 'liveFirst']);
+const FOOD_TARGETS = new Set(['fish', 'fry']);
+const PAIR_STATES = new Set(['paired', 'gravid', 'cooling']);
+const ORDER_CUSTOMERS = new Set(['hobbyist', 'petShop', 'collector']);
+const ORDER_STATUSES = new Set(['open', 'fulfilled', 'expired']);
+
+function validateTank(tank: unknown): string[] {
+  const errors: string[] = [];
+  if (!isRecord(tank)) return ['state.tank must be an object'];
+  if (!isNonEmptyString(tank.id)) errors.push('state.tank.id must be a non-empty string');
+  if (!isInt(tank.tier) || (tank.tier as number) < 1 || (tank.tier as number) > 3) {
+    errors.push('state.tank.tier must be an integer 1..3');
+  } else {
+    let expected = -1;
+    try {
+      expected = tierVolumeL(tank.tier as number);
+    } catch {
+      expected = -1;
+    }
+    if (tank.volumeL !== expected) errors.push('state.tank.volumeL must match its tier (20 / 60 / 150)');
+  }
+  const water = tank.water;
+  if (!isRecord(water)) {
+    errors.push('state.tank.water must be an object');
+  } else {
+    if (!inRange(water.waste, 0, 100)) errors.push('state.tank.water.waste must be a number 0..100');
+    if (!inRange(water.nitrate, 0, 100)) errors.push('state.tank.water.nitrate must be a number 0..100');
+    if (!inRange(water.tempC, 10, 35)) errors.push('state.tank.water.tempC must be a number 10..35');
+  }
+  const equipment = tank.equipment;
+  if (!isRecord(equipment)) {
+    errors.push('state.tank.equipment must be an object');
+  } else {
+    const filter = equipment.filter;
+    if (!isRecord(filter) || !isInt(filter.level) || ![1, 2, 3].includes(filter.level as number)) {
+      errors.push('state.tank.equipment.filter.level must be 1 | 2 | 3');
+    } else if (!isFiniteNumber(filter.conversionRate) || (filter.conversionRate as number) < 0) {
+      errors.push('state.tank.equipment.filter.conversionRate must be a number >= 0');
+    }
+    for (const device of ['heater', 'autoFeeder'] as const) {
+      const entry = equipment[device];
+      if (!isRecord(entry) || typeof entry.installed !== 'boolean') {
+        errors.push(`state.tank.equipment.${device}.installed must be a boolean`);
+      }
+    }
+    const light = equipment.light;
+    if (!isRecord(light) || !isInt(light.level) || ![1, 2, 3].includes(light.level as number)) {
+      errors.push('state.tank.equipment.light.level must be 1 | 2 | 3');
+    }
+  }
+  if (!isFiniteNumber(tank.bioload) || (tank.bioload as number) < 0) {
+    errors.push('state.tank.bioload must be a number >= 0');
+  }
+  if (!inRange(tank.biofilterMaturity, 0, 1)) {
+    errors.push('state.tank.biofilterMaturity must be a number 0..1');
+  }
+  if (typeof tank.prevQualityBand !== 'string' || !WATER_BANDS.has(tank.prevQualityBand)) {
+    errors.push('state.tank.prevQualityBand must be good | fair | poor');
+  }
+  for (const latch of ['overcrowdLatch', 'tempPoorLatch'] as const) {
+    if (typeof tank[latch] !== 'boolean') errors.push(`state.tank.${latch} must be a boolean`);
+  }
+  return errors;
+}
+
+function validateCollections(state: Record<string, unknown>): string[] {
+  const errors: string[] = [];
+  if (!isRecord(state.fish)) {
+    errors.push('state.fish must be an object');
+  } else {
+    for (const id of Object.keys(state.fish)) {
+      const entry = (state.fish as Record<string, unknown>)[id];
+      if (!isRecord(entry)) {
+        errors.push(`state.fish.${id} must be an object`);
+        continue;
+      }
+      if (!isRecord(entry.genome)) errors.push(`state.fish.${id}.genome must be a record`);
+      if (typeof entry.stunted !== 'boolean') errors.push(`state.fish.${id}.stunted must be a boolean`);
+    }
+  }
+  if (!isRecord(state.cohorts)) {
+    errors.push('state.cohorts must be an object');
+  } else {
+    for (const id of Object.keys(state.cohorts)) {
+      const entry = (state.cohorts as Record<string, unknown>)[id];
+      if (!isRecord(entry)) {
+        errors.push(`state.cohorts.${id} must be an object`);
+        continue;
+      }
+      if (typeof entry.stage !== 'string' || !COHORT_STAGES.has(entry.stage)) {
+        errors.push(`state.cohorts.${id}.stage must be eggs | fry`);
+      }
+      if (!isInt(entry.count) || (entry.count as number) < 0) {
+        errors.push(`state.cohorts.${id}.count must be an integer >= 0`);
+      }
+      if (!isFiniteNumber(entry.ageDays) || (entry.ageDays as number) < 0) {
+        errors.push(`state.cohorts.${id}.ageDays must be a number >= 0`);
+      }
+      if (!isRecord(entry.genomePool)) errors.push(`state.cohorts.${id}.genomePool must be a record`);
+      for (const counter of ['firstFoodDays', 'lastFryFedDay'] as const) {
+        if (!isInt(entry[counter]) || ((entry[counter] as number) as number) < 0) {
+          errors.push(`state.cohorts.${id}.${counter} must be an integer >= 0`);
+        }
+      }
+    }
+  }
+  if (!isRecord(state.food)) {
+    errors.push('state.food must be an object');
+  } else {
+    for (const id of Object.keys(state.food)) {
+      const entry = (state.food as Record<string, unknown>)[id];
+      if (!isRecord(entry)) {
+        errors.push(`state.food.${id} must be an object`);
+        continue;
+      }
+      if (typeof entry.kind !== 'string' || !FOOD_KINDS.has(entry.kind)) {
+        errors.push(`state.food.${id}.kind must be flakes | pellets | liveFirst`);
+      }
+      if (!isInt(entry.qty) || (entry.qty as number) < 1) {
+        errors.push(`state.food.${id}.qty must be an integer >= 1`);
+      }
+      if (!isInt(entry.acquiredDay) || (entry.acquiredDay as number) < 1) {
+        errors.push(`state.food.${id}.acquiredDay must be an integer >= 1`);
+      }
+      if (typeof entry.target !== 'string' || !FOOD_TARGETS.has(entry.target)) {
+        errors.push(`state.food.${id}.target must be fish | fry`);
+      }
+    }
+  }
+  if (!isRecord(state.market)) {
+    errors.push('state.market must be an object');
+  } else {
+    for (const id of Object.keys(state.market)) {
+      const entry = (state.market as Record<string, unknown>)[id];
+      if (!isRecord(entry)) {
+        errors.push(`state.market.${id} must be an object`);
+        continue;
+      }
+      if (!isFiniteNumber(entry.demand) || (entry.demand as number) < 0) {
+        errors.push(`state.market.${id}.demand must be a number >= 0`);
+      }
+      if (!isInt(entry.trend) || ![-1, 0, 1].includes(entry.trend as number)) {
+        errors.push(`state.market.${id}.trend must be -1 | 0 | 1`);
+      }
+      if (!isInt(entry.lastTrendDay) || (entry.lastTrendDay as number) < 1) {
+        errors.push(`state.market.${id}.lastTrendDay must be an integer >= 1`);
+      }
+    }
+  }
+  if (!Array.isArray(state.orders)) {
+    errors.push('state.orders must be an array');
+  } else {
+    for (const [index, order] of (state.orders as unknown[]).entries()) {
+      if (!isRecord(order)) {
+        errors.push(`state.orders[${index}] must be an object`);
+        continue;
+      }
+      if (!isNonEmptyString(order.id)) errors.push(`state.orders[${index}].id must be a non-empty string`);
+      if (!isNonEmptyString(order.speciesId)) errors.push(`state.orders[${index}].speciesId must be a non-empty string`);
+      if (typeof order.customer !== 'string' || !ORDER_CUSTOMERS.has(order.customer)) {
+        errors.push(`state.orders[${index}].customer must be hobbyist | petShop | collector`);
+      }
+      if (!isInt(order.quantity) || (order.quantity as number) < 1) {
+        errors.push(`state.orders[${index}].quantity must be an integer >= 1`);
+      }
+      if (!isInt(order.minHealth)) errors.push(`state.orders[${index}].minHealth must be an integer`);
+      if (!isFiniteNumber(order.minSizeCm) || (order.minSizeCm as number) < 0) {
+        errors.push(`state.orders[${index}].minSizeCm must be a number >= 0`);
+      }
+      if (!isFiniteNumber(order.multiplier)) errors.push(`state.orders[${index}].multiplier must be a number`);
+      if (!isInt(order.reward)) errors.push(`state.orders[${index}].reward must be an integer`);
+      if (!isInt(order.deadlineDay)) errors.push(`state.orders[${index}].deadlineDay must be an integer`);
+      if (typeof order.status !== 'string' || !ORDER_STATUSES.has(order.status)) {
+        errors.push(`state.orders[${index}].status must be open | fulfilled | expired`);
+      }
+    }
+  }
+  if (!Array.isArray(state.notifications)) {
+    errors.push('state.notifications must be an array');
+  } else {
+    for (const [index, note] of (state.notifications as unknown[]).entries()) {
+      if (!isRecord(note)) {
+        errors.push(`state.notifications[${index}] must be an object`);
+        continue;
+      }
+      for (const field of ['id', 'priority', 'kind', 'message'] as const) {
+        if (typeof note[field] !== 'string') errors.push(`state.notifications[${index}].${field} must be a string`);
+      }
+      if (note.subjectId !== undefined && typeof note.subjectId !== 'string') {
+        errors.push(`state.notifications[${index}].subjectId must be a string when present`);
+      }
+    }
+  }
+  if (!isRecord(state.pairs)) {
+    errors.push('state.pairs must be an object');
+  } else {
+    const ids = Object.keys(state.pairs);
+    if (ids.length > MAX_PAIRS) errors.push(`state.pairs exceeds the import cap of ${MAX_PAIRS}`);
+    for (const id of ids) {
+      const entry = (state.pairs as Record<string, unknown>)[id];
+      if (!isRecord(entry)) {
+        errors.push(`state.pairs.${id} must be an object`);
+        continue;
+      }
+      for (const field of ['id', 'femaleId', 'maleId', 'speciesId'] as const) {
+        if (!isNonEmptyString(entry[field])) errors.push(`state.pairs.${id}.${field} must be a non-empty string`);
+      }
+      if (typeof entry.state !== 'string' || !PAIR_STATES.has(entry.state)) {
+        errors.push(`state.pairs.${id}.state must be paired | gravid | cooling`);
+      }
+      if (!isInt(entry.readyDay) || (entry.readyDay as number) < 0) {
+        errors.push(`state.pairs.${id}.readyDay must be an integer >= 0`);
+      }
+    }
+  }
+  // Feeding program deep validation lands with U4; the barrier requires the section present.
+  if (!isRecord(state.feeding)) {
+    errors.push('state.feeding must be an object');
+  } else if (
+    (state.feeding as Record<string, unknown>).schedule !== null &&
+    !isRecord((state.feeding as Record<string, unknown>).schedule)
+  ) {
+    errors.push('state.feeding.schedule must be null or an object');
+  }
+  return errors;
+}
+
 /** Structural check of the migrated state; clock invariant included. */
 function validateStateShape(state: unknown): string[] {
   if (!isRecord(state)) return ['state must be an object'];
@@ -189,14 +461,41 @@ function validateStateShape(state: unknown): string[] {
     );
   }
   if (!isInt(state.money) || (state.money as number) < 0) errors.push('state.money must be an integer >= 0');
-  if (!isRecord(state.settings)) errors.push('state.settings must be an object');
-  if (!isRecord(state.progression)) errors.push('state.progression must be an object');
-  if (!isRecord(state.tank)) errors.push('state.tank must be an object');
-  for (const field of ['fish', 'cohorts', 'food', 'market'] as const) {
-    if (!isRecord(state[field])) errors.push(`state.${field} must be an object`);
+  if (!isInt(state.reputation) || (state.reputation as number) < 0) {
+    errors.push('state.reputation must be an integer >= 0');
   }
-  if (!Array.isArray(state.orders)) errors.push('state.orders must be an array');
-  if (!Array.isArray(state.notifications)) errors.push('state.notifications must be an array');
+  if (!isRecord(state.settings)) {
+    errors.push('state.settings must be an object');
+  } else {
+    const settings = state.settings as Record<string, unknown>;
+    for (const flag of ['reducedMotion', 'autoPauseCritical'] as const) {
+      if (typeof settings[flag] !== 'boolean') errors.push(`state.settings.${flag} must be a boolean`);
+    }
+    const volume = settings.volume;
+    if (!isRecord(volume)) {
+      errors.push('state.settings.volume must be an object');
+    } else {
+      for (const channel of ['master', 'sfx'] as const) {
+        if (!inRange(volume[channel], 0, 1)) errors.push(`state.settings.volume.${channel} must be a number 0..1`);
+      }
+    }
+  }
+  if (!isRecord(state.progression)) {
+    errors.push('state.progression must be an object');
+  } else {
+    const progression = state.progression as Record<string, unknown>;
+    if (!isInt(progression.level) || !([1, 2, 3] as number[]).includes(progression.level as number)) {
+      errors.push('state.progression.level must be 1 | 2 | 3');
+    }
+    if (!isInt(progression.xp) || (progression.xp as number) < 0) {
+      errors.push('state.progression.xp must be an integer >= 0');
+    }
+    if (!Array.isArray(progression.unlocks) || !(progression.unlocks as unknown[]).every((u) => typeof u === 'string')) {
+      errors.push('state.progression.unlocks must be a string[]');
+    }
+  }
+  errors.push(...validateTank(state.tank));
+  errors.push(...validateCollections(state));
   return errors;
 }
 
@@ -225,7 +524,8 @@ export function createSaveSystem(opts: SaveSystemOptions): SaveLoadApi {
   // eslint-disable-next-line no-restricted-globals -- NFR3.2 targets systems/handlers, not save metadata
   const now = opts.now ?? (() => new Date().toISOString());
   const logger = opts.logger ?? { warn: () => undefined, info: () => undefined };
-  const migrations = opts.migrations ?? {};
+  // Forward chain ships with the built v1 -> v2 migration; callers may add later steps.
+  const migrations = opts.migrations ?? { 1: migrateV1ToV2 };
   let playtimeMs = opts.playtimeMs ?? 0;
   let autosaveEnabled = true;
   let memoryLastSeen = '';
@@ -334,6 +634,10 @@ export function createSaveSystem(opts: SaveSystemOptions): SaveLoadApi {
     }
     let state: unknown = envelope.state;
     let from = version;
+    const gate = isRecord(state) ? countGateErrors(state) : [];
+    if (gate.length > 0) {
+      return { code: 'INVALID_SHAPE', message: `Save state is invalid: ${gate[0] as string}` };
+    }
     while (from < CURRENT_SCHEMA_VERSION) {
       const migrate = migrations[from];
       if (!migrate) {
@@ -555,6 +859,9 @@ export function createSaveSystem(opts: SaveSystemOptions): SaveLoadApi {
     },
 
     importFile(text: string, opts?: { confirmStale?: boolean }): LoadOutcome {
+      if (text.length > MAX_SAVE_BYTES) {
+        return { ok: false, error: { code: 'INVALID_SHAPE', message: 'Save text exceeds the 2 MB import limit.' } };
+      }
       let parsed: unknown;
       try {
         parsed = JSON.parse(text);

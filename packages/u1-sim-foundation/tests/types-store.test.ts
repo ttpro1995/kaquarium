@@ -78,6 +78,7 @@ describe('types + store (BR1.3, US9.3, US11.1)', () => {
       satiety: 80,
       stress: 5,
       genome: {},
+      stunted: false,
       value: 15,
       mature: true,
     };

@@ -7,7 +7,7 @@
 import type { SpeciesCatalog } from './species.js';
 import type { Registry } from './registry.js';
 import type { MutableStore } from './store.js';
-import { drainEventBuffer, type SimEvent } from './events.js';
+import { drainEventBuffer, type BaseSimEvent, type SimEvent } from './events.js';
 import { runTick } from './tick.js';
 
 /** 8 game-days at the hourly simulation step. */
@@ -34,7 +34,10 @@ export function runCatchUp(
   const capped = total > MAX_CATCH_UP_TICKS;
 
   const counts = { hatched: 0, matured: 0, diedOfOldAge: 0, ordersExpired: 0 };
-  const collector = (events: SimEvent[]): void => {
+  // Reads through the permissive base on purpose: the catch-up summary
+  // aggregates kinds owned by units that may not be in the program yet
+  // (U3/U5/U6). Field access stays guarded by typeof checks below.
+  const collector = (events: BaseSimEvent[]): void => {
     for (const event of events) {
       if (event.kind === 'fryHatched') {
         counts.hatched += typeof event.count === 'number' ? event.count : 1;

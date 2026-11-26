@@ -5,8 +5,16 @@
 import type { GameState, Notification } from './types.js';
 import type { SpeciesCatalog } from './species.js';
 
-/** Open map: each producing unit augments its own variants (Q5-B). */
-export interface SimEventMap {}
+/** Open map: each producing unit augments its own variants (Q5-B). U1 owns whileYouWereAway (catch-up summary). */
+export interface SimEventMap {
+  whileYouWereAway: {
+    elapsedDays: number;
+    hatched: number;
+    matured: number;
+    diedOfOldAge: number;
+    ordersExpired: number;
+  };
+}
 
 export type KnownSimEvent = {
   [K in keyof SimEventMap]: { kind: K } & SimEventMap[K];

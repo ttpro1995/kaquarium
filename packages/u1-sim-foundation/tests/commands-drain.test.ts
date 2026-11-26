@@ -22,7 +22,7 @@ function setup() {
   registerKernelCommands(registry);
   registry.registerCommand('test.echo', (state: GameState, payload: { text: string }, ctx: CommandContext) => {
     void state;
-    ctx.events.push({ kind: 'test.echo', text: payload.text });
+    ctx.events.push({ kind: 'test.echo', text: payload.text } as never);
     return { ok: true, value: { echoed: true } };
   });
   const species = emptyCatalog();
@@ -117,7 +117,7 @@ describe('command bus + event drain (BR1.2, BR3.1)', () => {
   it('applies the notification mapper on the command drain', () => {
     const { store, registry, species } = setup();
     registry.registerNotificationMapper((event) =>
-      event.kind === 'test.echo'
+      (event.kind as string) === 'test.echo'
         ? { id: 'n1', priority: 'info', kind: 'test.echo', subjectId: 's', message: 'echo' }
         : null,
     );

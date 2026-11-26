@@ -94,6 +94,17 @@ export function validateSpeciesEntry(entry: unknown): string[] {
   if (typeof entry.layer !== 'string' || !LAYERS.has(entry.layer)) {
     errors.push('layer must be top | middle | bottom');
   }
+  const tempRange = (entry as { tempRangeC?: unknown }).tempRangeC;
+  if (tempRange !== undefined) {
+    if (
+      !Array.isArray(tempRange) ||
+      tempRange.length !== 2 ||
+      typeof tempRange[0] !== 'number' ||
+      typeof tempRange[1] !== 'number'
+    ) {
+      errors.push('tempRangeC must be a [min, max] number pair when present');
+    }
+  }
   return errors;
 }
 

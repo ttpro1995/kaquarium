@@ -18,6 +18,7 @@ function makeFish(id: string, i: number): Fish {
     satiety: 70,
     stress: 10,
     genome: {},
+    stunted: false,
     value: 12,
     mature: true,
   };

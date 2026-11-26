@@ -9,47 +9,47 @@
 ## Steps
 
 ### Step 1: Project structure and production configuration skeleton. (US3.1, US3.2)
-- [ ] Create `packages/u4-feeding/package.json` (name `@aquarium/u4-feeding`, type module, no new deps), `tsconfig.json` (extends root, strict), `src/` + `tests/` dirs.
+- [x] Create `packages/u4-feeding/package.json` (name `@aquarium/u4-feeding`, type module, no new deps), `tsconfig.json` (extends root, strict), `src/` + `tests/` dirs.
 
 ### Step 2: Bootstrap the minimal test runner/configuration and record the exact unit-scoped command.
-- [ ] Verify `vitest run packages/u4-feeding` executes (empty suite green); command recorded in `unit-test-instructions.md`.
+- [x] Verify `vitest run packages/u4-feeding` executes (empty suite green); command recorded in `unit-test-instructions.md`.
 
 ### Step 3: Data model — Red: stock/schedule field tests. (FR3.1; BR12)
-- [ ] Write failing `packages/u4-feeding/tests/stock.test.ts`: buyFood appends dated stacks (kind/qty/price, money deducts, trio of validation rejections); expiry by game day (expired stacks visible, never dispense); schedule state shape. Record failing output.
+- [x] Write failing `packages/u4-feeding/tests/stock.test.ts`: buyFood appends dated stacks (kind/qty/price, money deducts, trio of validation rejections); expiry by game day (expired stacks visible, never dispense); schedule state shape. Record failing output.
 
 ### Step 4: Data model — Green: implement stock + schedule state.
-- [ ] `src/food.ts` (FoodItem helpers, expiry predicates, oldest-first usable order); `src/schedule.ts` (FeedingSchedule state, lastRunHour init).
-- [ ] Run stock tests green.
+- [x] `src/food.ts` (FoodItem helpers, expiry predicates, oldest-first usable order); `src/schedule.ts` (FeedingSchedule state, lastRunHour init).
+- [x] Run stock tests green.
 
 ### Step 5: Data model — Refactor while green.
-- [ ] Share portion/price math; keep tests green.
+- [x] Share portion/price math; keep tests green.
 
 ### Step 6: Business logic — Red: feeding/dispensing tests. (US3.2 AC3.2.1–AC3.2.2; BR13)
-- [ ] Write failing `packages/u4-feeding/tests/feeding.test.ts` (10): manual feed restores satiety (round(25×quality), ascending-satiety order); overfeeding leftover → waste + overfed; depleted stack removed + foodOut; fry feeding (10 fry/portion, day idempotency, eggs rejected); auto-feeder interval runs + backlog-never + silent skip on no stock; schedule set/clear validation. Record failing output.
+- [x] Write failing `packages/u4-feeding/tests/feeding.test.ts` (10): manual feed restores satiety (round(25×quality), ascending-satiety order); overfeeding leftover → waste + overfed; depleted stack removed + foodOut; fry feeding (10 fry/portion, day idempotency, eggs rejected); auto-feeder interval runs + backlog-never + silent skip on no stock; schedule set/clear validation. Record failing output.
 
 ### Step 7: Business logic — Green: implement feeding-phase system.
-- [ ] `src/feeding.ts`: registered `u4.feeding` system (feeding phase: auto-feeder run, expiry sweep + foodOut once per stack) + C2-allowlisted writes (tank waste, Fish.satiety, feedFry counters).
-- [ ] Run feeding tests green.
+- [x] `src/feeding.ts`: registered `u4.feeding` system (feeding phase: auto-feeder run, expiry sweep + foodOut once per stack) + C2-allowlisted writes (tank waste, Fish.satiety, feedFry counters).
+- [x] Run feeding tests green.
 
 ### Step 8: Business logic — Refactor while green.
-- [ ] Extract dispense/validation helpers; keep tests green.
+- [x] Extract dispense/validation helpers; keep tests green.
 
 ### Step 9: API/endpoint — Red: command + event tests. (US3.1; C2 purchase-path)
-- [ ] Write failing `packages/u4-feeding/tests/commands.test.ts` (7): buyFood/feedFish/feedFry/setAutoFeeder via real bus (validate-first, atomic, moneyChanged on buys, fed/overfed/foodOut events); NOT_AVAILABLE paths (device, expiry, dryness); day-idempotent counter writes. Record failing output.
+- [x] Write failing `packages/u4-feeding/tests/commands.test.ts` (7): buyFood/feedFish/feedFry/setAutoFeeder via real bus (validate-first, atomic, moneyChanged on buys, fed/overfed/foodOut events); NOT_AVAILABLE paths (device, expiry, dryness); day-idempotent counter writes. Record failing output.
 
 ### Step 10: API/endpoint — Green: implement commands + events + register.
-- [ ] `src/commands.ts`, `src/events.ts` (fed/overfed/foodOut augmentation), `src/selectors.ts` (foodStock, usableFood, feedingProgram), `src/index.ts` (register).
-- [ ] Run command tests green.
+- [x] `src/commands.ts`, `src/events.ts` (fed/overfed/foodOut augmentation), `src/selectors.ts` (foodStock, usableFood, feedingProgram), `src/index.ts` (register).
+- [x] Run command tests green.
 
 ### Step 11: API/endpoint — Refactor while green.
-- [ ] Consolidate validation; keep tests green.
+- [x] Consolidate validation; keep tests green.
 
 ### Step 12: Integration tests for key boundaries.
-- [ ] `packages/u4-feeding/tests/integration.test.ts`: feed → satiety → U3 growth reads it; overfeed → waste → U2 band flip; schedule fires across catch-up ticks identically.
-- [ ] Benchmark probe `packages/u4-feeding/tests/benchmark.test.ts`: 50 warmup, p95-of-300 ≤ 0.25 ms (4-stack + 24-stack fixtures); heap < 64 KB/100 ticks (informational).
+- [x] `packages/u4-feeding/tests/integration.test.ts`: feed → satiety → U3 growth reads it; overfeed → waste → U2 band flip; schedule fires across catch-up ticks identically.
+- [x] Benchmark probe `packages/u4-feeding/tests/benchmark.test.ts`: 50 warmup, p95-of-300 ≤ 0.25 ms (4-stack + 24-stack fixtures); heap < 64 KB/100 ticks (informational).
 
 ### Step 13: Documentation and traceability.
-- [ ] `code-summary.md`, `source-manifest.json`, `traceability.json` mapping BR12/BR13 + NFR1.1/NFR3.1/NFR4.1/NFR4.2/NFR5.1 to the new files.
+- [x] `code-summary.md`, `source-manifest.json`, `traceability.json` mapping BR12/BR13 + NFR1.1/NFR3.1/NFR4.1/NFR4.2/NFR5.1 to the new files.
 
 Repository/data-access (shared U1 store) and frontend layers are genuinely inapplicable and omitted without changing TDD methodology.
 

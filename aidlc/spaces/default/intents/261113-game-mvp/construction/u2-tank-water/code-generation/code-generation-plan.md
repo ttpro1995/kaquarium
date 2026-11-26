@@ -9,51 +9,51 @@
 ## Steps
 
 ### Step 1: Project structure and production configuration skeleton. (US1.2, US1.3)
-- [ ] Create `packages/u2-tank-water/package.json` (name `@aquarium/u2-tank-water`, type module, no new deps), `tsconfig.json` (extends root, strict), `src/` + `tests/` dirs.
+- [x] Create `packages/u2-tank-water/package.json` (name `@aquarium/u2-tank-water`, type module, no new deps), `tsconfig.json` (extends root, strict), `src/` + `tests/` dirs.
 
 ### Step 2: Bootstrap the minimal test runner/configuration and record the exact unit-scoped command.
-- [ ] Verify workspace-wide `vitest run --coverage packages/u2-tank-water` executes (empty suite green); record command in `unit-test-instructions.md` (already written).
+- [x] Verify workspace-wide `vitest run --coverage packages/u2-tank-water` executes (empty suite green); record command in `unit-test-instructions.md` (already written).
 
 ### Step 3: Data model — Red: Tank alignment + migration tests first. (FR1.2, FR1.3; NFR4.1)
-- [ ] Write failing `packages/u2-tank-water/tests/migration.test.ts`: v1 fixture (water {waste,temperature,ph}, equipment string[], volumeL 50, no latches) → migrated equals fresh v2 (water {waste,nitrate,tempC}, structured equipment, tier volumes 20/60/150, latches derived, `Fish.stunted=false`, feeding defaults, `pairs={}`, commerce defaults); record failing output.
-- [ ] Write failing import-barrier tests (oversize text, banned key, over-count, out-of-range chemistry, hand-stamped v2 missing latches); record failing output.
+- [x] Write failing `packages/u2-tank-water/tests/migration.test.ts`: v1 fixture (water {waste,temperature,ph}, equipment string[], volumeL 50, no latches) → migrated equals fresh v2 (water {waste,nitrate,tempC}, structured equipment, tier volumes 20/60/150, latches derived, `Fish.stunted=false`, feeding defaults, `pairs={}`, commerce defaults); record failing output.
+- [x] Write failing import-barrier tests (oversize text, banned key, over-count, out-of-range chemistry, hand-stamped v2 missing latches); record failing output.
 
 ### Step 4: Data model — Green: implement alignment + migration + barrier.
-- [ ] Edit `packages/u1-sim-foundation/src/types.ts`: `TankWater {waste,nitrate,tempC}`, structured `Equipment`, `Tank` latch fields, tier-volume pairing, `defaultTank()` update, `GameState.pairs`, `FoodItem.acquiredDay/target`, `FryCohort` counters, `MarketState.lastTrendDay`, `Order` commerce fields, `Notification.subjectId?`.
-- [ ] Add `migrateV1ToV2` in `persistence/` + extend `validateStateShape` (pre-parse size gate, count caps, chemistry ranges, required-field + genome-is-record checks).
-- [ ] Update `contract-summary.md` C1 Tank row + C5 if a meaning changed.
-- [ ] Run migration + barrier tests green.
+- [x] Edit `packages/u1-sim-foundation/src/types.ts`: `TankWater {waste,nitrate,tempC}`, structured `Equipment`, `Tank` latch fields, tier-volume pairing, `defaultTank()` update, `GameState.pairs`, `FoodItem.acquiredDay/target`, `FryCohort` counters, `MarketState.lastTrendDay`, `Order` commerce fields, `Notification.subjectId?`.
+- [x] Add `migrateV1ToV2` in `persistence/` + extend `validateStateShape` (pre-parse size gate, count caps, chemistry ranges, required-field + genome-is-record checks).
+- [x] Update `contract-summary.md` C1 Tank row + C5 if a meaning changed.
+- [x] Run migration + barrier tests green.
 
 ### Step 5: Data model — Refactor while green.
-- [ ] Dedupe derivation helpers (band/latch derivation shared by migration and load); keep tests green.
+- [x] Dedupe derivation helpers (band/latch derivation shared by migration and load); keep tests green.
 
 ### Step 6: Business logic — Red: water system tests. (US1.2 AC1.2.1–AC1.2.2; BR8–BR9)
-- [ ] Write failing `packages/u2-tank-water/tests/water.test.ts` (8): waste accumulates from bioload+feeding; filter converts waste→nitrate at capacity×maturity; new filter cycles ~10 days; water change dilutes 10–50% for fee; bioload vs volume + 2× waste while overcrowded; overcrowd episode open/re-arm + `tankOvercrowded` once; heater holds 26°C vs 22°C drift; latch edge-transitions (prevQualityBand/tempPoorLatch, late arrivals emit nothing). Record failing output.
+- [x] Write failing `packages/u2-tank-water/tests/water.test.ts` (8): waste accumulates from bioload+feeding; filter converts waste→nitrate at capacity×maturity; new filter cycles ~10 days; water change dilutes 10–50% for fee; bioload vs volume + 2× waste while overcrowded; overcrowd episode open/re-arm + `tankOvercrowded` once; heater holds 26°C vs 22°C drift; latch edge-transitions (prevQualityBand/tempPoorLatch, late arrivals emit nothing). Record failing output.
 
 ### Step 7: Business logic — Green: implement water system + selectors.
-- [ ] `src/water.ts`: registered `u2.water` system (water phase) + selectors (`tankWater`, `waterQuality`, `capacity`, `projectedBioload`, `bioloadOf`, `tempFitFor`).
-- [ ] Run water tests green.
+- [x] `src/water.ts`: registered `u2.water` system (water phase) + selectors (`tankWater`, `waterQuality`, `capacity`, `projectedBioload`, `bioloadOf`, `tempFitFor`).
+- [x] Run water tests green.
 
 ### Step 8: Business logic — Refactor while green.
-- [ ] Extract pure math (conversion, dilution, episode transitions) from the system; keep tests green.
+- [x] Extract pure math (conversion, dilution, episode transitions) from the system; keep tests green.
 
 ### Step 9: API/endpoint (command bus + events) — Red: equipment/upgrade/water-change tests. (US1.3 AC1.3.1–AC1.3.2; BR9)
-- [ ] Write failing `packages/u2-tank-water/tests/equipment.test.ts` (7): buy filter/heater/light/autoFeeder (funds, unlocks incl. `equipment.autofeeder`, TANK_FULL via projectedBioload never head-count); tier upgrade 300/800 keeps heater; heater holds tropical range; unlock NOT_AVAILABLE; INSUFFICIENT_FUNDS atomicity; `moneyChanged` + `equipmentUpgraded`/`tierUpgraded` events.
-- [ ] Record failing output.
+- [x] Write failing `packages/u2-tank-water/tests/equipment.test.ts` (7): buy filter/heater/light/autoFeeder (funds, unlocks incl. `equipment.autofeeder`, TANK_FULL via projectedBioload never head-count); tier upgrade 300/800 keeps heater; heater holds tropical range; unlock NOT_AVAILABLE; INSUFFICIENT_FUNDS atomicity; `moneyChanged` + `equipmentUpgraded`/`tierUpgraded` events.
+- [x] Record failing output.
 
 ### Step 10: API/endpoint — Green: implement commands + events + register.
-- [ ] `src/commands.ts` (`tank.waterChange`, `tank.buyEquipment`, `tank.upgradeTier`), `src/events.ts` (SimEventMap augmentation: `waterChanged`, `equipmentUpgraded`, `tankOvercrowded`, `fishSick`), `src/index.ts` (`register`: system + commands).
-- [ ] Run equipment tests green.
+- [x] `src/commands.ts` (`tank.waterChange`, `tank.buyEquipment`, `tank.upgradeTier`), `src/events.ts` (SimEventMap augmentation: `waterChanged`, `equipmentUpgraded`, `tankOvercrowded`, `fishSick`), `src/index.ts` (`register`: system + commands).
+- [x] Run equipment tests green.
 
 ### Step 11: API/endpoint — Refactor while green.
-- [ ] Share validation helpers (funds/unlock/capacity checks); keep tests green.
+- [x] Share validation helpers (funds/unlock/capacity checks); keep tests green.
 
 ### Step 12: Integration tests for key boundaries.
-- [ ] `packages/u2-tank-water/tests/commands.test.ts`: dispatch through the real U1 bus+registry (waterChange fee deducts + emits pair; upgrade deducts + emits pair; rejected calls change nothing, bump nothing).
-- [ ] Benchmark probe `packages/u2-tank-water/tests/benchmark.test.ts`: 50 warmup, p95-of-300 timed water-phase ticks ≤ 1.0 ms at 100 fish; heap growth < 64 KB/100 ticks (informational, opens `perf-regression` follow-up on exceedance).
+- [x] `packages/u2-tank-water/tests/commands.test.ts`: dispatch through the real U1 bus+registry (waterChange fee deducts + emits pair; upgrade deducts + emits pair; rejected calls change nothing, bump nothing).
+- [x] Benchmark probe `packages/u2-tank-water/tests/benchmark.test.ts`: 50 warmup, p95-of-300 timed water-phase ticks ≤ 1.0 ms at 100 fish; heap growth < 64 KB/100 ticks (informational, opens `perf-regression` follow-up on exceedance).
 
 ### Step 13: Documentation and traceability.
-- [ ] `code-summary.md` (files, decisions, coverage, deviations); `source-manifest.json`; `traceability.json` via `aidlc engine sensor-traceability --stage code-generation` mapping BR8/BR9 + NFR1.1/NFR3.1/NFR4.1–NFR4.3/NFR5.1 to the new files.
+- [x] `code-summary.md` (files, decisions, coverage, deviations); `source-manifest.json`; `traceability.json` via `aidlc engine sensor-traceability --stage code-generation` mapping BR8/BR9 + NFR1.1/NFR3.1/NFR4.1–NFR4.3/NFR5.1 to the new files.
 
 Repository/data-access and frontend layers are genuinely inapplicable (shared U1 store; no UI in U2) and omitted without changing TDD methodology.
 

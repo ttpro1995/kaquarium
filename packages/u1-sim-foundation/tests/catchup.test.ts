@@ -7,7 +7,15 @@ import { canonicalJson } from '../src/canonicalJson.js';
 import { createInitialState } from '../src/types.js';
 import { emptyCatalog } from '../src/species.js';
 import type { System, TickContext } from '../src/registry.js';
-import type { SimEvent } from '../src/events.js';
+import type { BaseSimEvent, SimEvent } from '../src/events.js';
+
+/**
+ * Test doubles for kinds owned by units not in the program yet (U3/U5/U6).
+ * The double cast stays here so production types never see test-only kinds.
+ */
+function foreign(event: BaseSimEvent): SimEvent {
+  return event as unknown as SimEvent;
+}
 
 function counterSystem(id: string, phase: System['phase'], seen: boolean[]): System {
   return {
@@ -25,17 +33,17 @@ function livelyWorld() {
     id: 'u.test.hatchery',
     phase: 'breeding',
     run: (ctx: TickContext) => {
-      ctx.events.push({ kind: 'fryHatched', count: 2 });
-      ctx.events.push({ kind: 'fishMatured', fishId: 'f1', stage: 'adult' });
+      ctx.events.push(foreign({ kind: 'fryHatched', count: 2 }));
+      ctx.events.push(foreign({ kind: 'fishMatured', fishId: 'f1', stage: 'adult' }));
     },
   } as unknown as System);
   registry.registerSystem({
     id: 'u.test.mortality',
     phase: 'fish',
     run: (ctx: TickContext) => {
-      ctx.events.push({ kind: 'fishDied', fishId: 'f2', cause: 'oldAge' });
-      ctx.events.push({ kind: 'fishDied', fishId: 'f3', cause: 'starvation' });
-      ctx.events.push({ kind: 'orderExpired', orderId: 'o1' });
+      ctx.events.push(foreign({ kind: 'fishDied', fishId: 'f2', cause: 'oldAge' }));
+      ctx.events.push(foreign({ kind: 'fishDied', fishId: 'f3', cause: 'starvation' }));
+      ctx.events.push(foreign({ kind: 'orderExpired', orderId: 'o1' }));
     },
   } as unknown as System);
   return { store, registry, species };

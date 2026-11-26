@@ -50,6 +50,8 @@ export interface GameState {
   orders: Order[]
   notifications: Notification[]
   settings: Settings
+  pairs: Record<PairId, BreedingPair>   // U5 pair bonds (v2; migration fills {})
+  feeding: FeedingState                 // U4 auto-feeder program slot (v2; migration fills { schedule: null })
 }
 
 export interface GameClock {
@@ -86,14 +88,14 @@ U1 defines the type. The named unit owns the behaviour and may add fields the ta
 
 | Entity | Owner (behaviour) | Cross-boundary fields | Boundary it crosses |
 |---|---|---|---|
-| `Fish` | U3 | `id`, `speciesId`, `tankId`, `sex`, `stage`, `ageDays`, `sizeCm`, `health`, `satiety`, `stress`, `genome`, `value`, `mature` | U7 renders and selects; U4 feeds; U5 breeds; U6 prices and sells |
-| `Tank` | U2 | `id`, `tier`, `volumeL`, `water`, `equipment`, `bioload`, `biofilterMaturity` | U3 reads water quality; U7 renders and displays |
-| `FoodItem` | U4 | `id`, `kind`, `qty`, `quality`, `shelfLifeDays` | U7's feeding panel reads stock; U4 is the only writer |
-| `FryCohort` | U5 | `id`, `speciesId`, `tankId`, `bornDay`, `count`, `ageDays`, `genomePool`, `survivalFactor` | U7 renders a cohort; U3 matures it into `Fish` records |
-| `MarketState` | U6 | `speciesId`, `demand`, `trend`, `activeEvent?` | U7's market screen; U6 prices fish from it |
-| `Order` | U6 | `id`, `speciesId`, `quantity`, `deadline`, `minQuality`, `reward`, `status` (`open \| fulfilled \| expired`) | U7's order board; U6 fulfils or expires it |
+| `Fish` | U3 | `id`, `speciesId`, `tankId`, `sex`, `stage`, `ageDays`, `sizeCm`, `health`, `satiety`, `stress`, `genome`, `stunted`, `value`, `mature` | U7 renders and selects; U4 feeds; U5 breeds; U6 prices and sells |
+| `Tank` | U2 | `id`, `tier`, `volumeL` (20 / 60 / 150 by tier), `water` (`waste`, `nitrate`, `tempC`), `equipment` (structured `filter` / `heater` / `autoFeeder` / `light`), `bioload`, `biofilterMaturity`, `prevQualityBand`, `overcrowdLatch`, `tempPoorLatch` | U3 reads water quality; U7 renders and displays |
+| `FoodItem` | U4 | `id`, `kind`, `qty`, `quality`, `shelfLifeDays`, `acquiredDay`, `target` | U7's feeding panel reads stock; U4 is the only writer |
+| `FryCohort` | U5 | `id`, `speciesId`, `tankId`, `bornDay`, `count`, `ageDays`, `genomePool`, `survivalFactor`, `stage`, `hatchDay?`, `firstFoodDays`, `lastFryFedDay` | U7 renders a cohort; U3 matures it into `Fish` records |
+| `MarketState` | U6 | `speciesId`, `demand`, `trend`, `activeEvent?`, `lastTrendDay` | U7's market screen; U6 prices fish from it |
+| `Order` | U6 | `id`, `speciesId`, `customer`, `quantity`, `minHealth`, `minSizeCm`, `multiplier`, `reward`, `deadlineDay`, `status` (`open \| fulfilled \| expired`) | U7's order board; U6 fulfils or expires it |
 | `PlayerProgression` | U6 | `level` (1–3), `xp`, `unlocks` (`string[]`); `xpToNext` is derived, never stored | U7's HUD and unlock gating; U6 advances it |
-| `Notification` | U6 | `id`, `priority` (`info \| warn \| critical`), `kind`, `subjectId`, `message` | U7's queue and auto-pause; U6 produces it (C4) |
+| `Notification` | U6 | `id`, `priority` (`info \| warn \| critical`), `kind`, `subjectId?`, `message` | U7's queue and auto-pause; U6 produces it (C4) |
 | `Settings` | U1 (type); U7 renders the controls | `reducedMotion`, `autoPauseCritical`, `volume` (`{ master: number; sfx: number }`) | U7 reads and edits; U1 persists (C6). `reducedMotion` answers NFR2 |
 | `Species` | U1 (data) | see C5 | U2, U3, U5, U6, U7 read it |
 
@@ -310,7 +312,7 @@ The MVP target catalogue — every variant is `{ kind }` plus the fields below, 
 | `foodOut` | U4 | `foodId: FoodItemId` |
 | `waterChanged` | U2 | `wasteDelta: number` |
 | `equipmentUpgraded` | U2 | `equipment: string` |
-| `fishSick` | U2 | `fishId: FishId`, `cause: 'waterQuality'` |
+| `fishSick` | U2 | `fishId: FishId`, `cause: 'waterQuality' \| 'temperature'` |
 | `breedingStarted` | U5 | `fishIds: [FishId, FishId]` |
 | `fryHatched` | U5 | `cohortId: CohortId`, `count: number` |
 | `cohortGraded` | U5 | `cohortId: CohortId`, `count: number` |
@@ -429,9 +431,9 @@ shared-schema:
   name: SaveFile
   owner: u1-sim-foundation
   external: true
-  schema_version: 1
+  schema_version: 2
   envelope:
-    schemaVersion: integer          # the only version authority
+    schemaVersion: integer          # the only version authority (v2: U2 Tank alignment + latch/equipment/commerce filling)
     savedAt: "ISO-8601 UTC timestamp"
     playtimeMs: integer
     checksum: { algorithm: SHA-256, scope: "schemaVersion + savedAt + playtimeMs + state", value: "lowercase hex" }
@@ -465,7 +467,7 @@ shared-schema:
     export: "exportFile() serializes the current state; no slot is written (FR9.3)"
   packaging:
     unknown_fields: "ignored on read and dropped on the next write — additive changes stay safe"
-    migration: "forward-only chain v1 -> v2 -> ...; each step is a pure function; every bump ships with a round-trip test"
+    migration: "forward-only chain v1 -> v2 -> ...; each step is a pure function; every bump ships with a round-trip test (v1 fixture migrates to exactly a fresh v2 save at equal numbers)"
     write: "serialize -> write a temporary key -> read back to verify -> swap to the active key; retry once; fall back to localStorage; if both fail, warn and disable autosave until the next successful write"
     newer_version: "rejected with UNSUPPORTED_VERSION; the current save is untouched"
     corrupt_import: "rejected with a named error; the current save is untouched"

@@ -9,10 +9,26 @@ export type {
   Tank,
   TankId,
   TankWater,
+  WaterQualityBand,
+  FilterSpec,
+  HeaterSpec,
+  AutoFeederDevice,
+  LightSpec,
+  Equipment,
+  CohortId,
+  PairId,
+  CohortStage,
   FryCohort,
+  PairState,
+  BreedingPair,
+  FoodKind,
+  FoodTarget,
   FoodItem,
+  FeedingSchedule,
+  FeedingState,
   MarketState,
   Order,
+  OrderCustomer,
   OrderStatus,
   PlayerProgression,
   Notification,
@@ -23,7 +39,15 @@ export type {
   SaveChecksum,
   Speed,
 } from './types.js';
-export { createInitialState, validateClock, validateGameState, isClockPaused } from './types.js';
+export {
+  createInitialState,
+  validateClock,
+  validateGameState,
+  isClockPaused,
+  tierVolumeL,
+  TIER_VOLUME_L,
+  defaultTank,
+} from './types.js';
 export { canonicalJson } from './canonicalJson.js';
 export { createRng, type Rng } from './rng.js';
 export { createStore, replaceStoreState, type Store, type MutableStore, type FaultDescriptor } from './store.js';
@@ -70,6 +94,13 @@ export {
 export {
   CURRENT_SCHEMA_VERSION,
   CHECKSUM_SCOPE,
+  MAX_SAVE_BYTES,
+  MAX_FISH,
+  MAX_COHORTS,
+  MAX_ORDERS,
+  MAX_NOTIFICATIONS,
+  MAX_FOOD_STACKS,
+  MAX_PAIRS,
   MemoryStorage,
   sealEnvelope,
   createSaveSystem,
@@ -83,5 +114,12 @@ export {
   type SaveSystemOptions,
   type SaveSystemLogger,
 } from './persistence/persistence.js';
+export {
+  migrateV1ToV2,
+  deriveQualityBand,
+  deriveOvercrowdLatch,
+  deriveTempPoorLatch,
+  defaultFoodTarget,
+} from './persistence/migration.js';
 export { sha256Hex } from './persistence/sha256.js';
 export { createKernel, type Kernel, type KernelOptions } from './kernel.js';

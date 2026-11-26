@@ -13,48 +13,48 @@ U3 codes against the MIGRATED v2 shape (`WaterChemistry`, structured equipment, 
 ## Steps
 
 ### Step 1: Project structure and production configuration skeleton. (US2.1, US2.2, US4.1–US4.3)
-- [ ] Create `packages/u3-fish/package.json` (name `@aquarium/u3-fish`, type module, no new deps), `tsconfig.json` (extends root, strict), `src/` + `tests/` dirs.
+- [x] Create `packages/u3-fish/package.json` (name `@aquarium/u3-fish`, type module, no new deps), `tsconfig.json` (extends root, strict), `src/` + `tests/` dirs.
 
 ### Step 2: Bootstrap the minimal test runner/configuration and record the exact unit-scoped command.
-- [ ] Verify `vitest run packages/u3-fish` executes (empty suite green); command recorded in `unit-test-instructions.md`.
+- [x] Verify `vitest run packages/u3-fish` executes (empty suite green); command recorded in `unit-test-instructions.md`.
 
 ### Step 3: Data model — Red: Fish field-rule tests. (FR4.1–FR4.3; BR11.1)
-- [ ] Write failing `packages/u3-fish/tests/fields.test.ts`: spawnFish builds juvenile per BR11.1 field rules (sex 50/50 seeded, size 50–70%, genome rolled, parents set, stunted false, value cached); spawnFish mutates nothing and emits nothing. Record failing output.
+- [x] Write failing `packages/u3-fish/tests/fields.test.ts`: spawnFish builds juvenile per BR11.1 field rules (sex 50/50 seeded, size 50–70%, genome rolled, parents set, stunted false, value cached); spawnFish mutates nothing and emits nothing. Record failing output.
 
 ### Step 4: Data model — Green: implement factories + selectors.
-- [ ] `src/factories.ts` (`spawnFish`, `inheritGenome` — pure, rng-parameterized); `src/selectors.ts` (growthCondition/healthOf, genomeQuality, colour/rarity loci, price-factor inputs).
-- [ ] Run field tests green.
+- [x] `src/factories.ts` (`spawnFish`, `inheritGenome` — pure, rng-parameterized); `src/selectors.ts` (growthCondition/healthOf, genomeQuality, colour/rarity loci, price-factor inputs).
+- [x] Run field tests green.
 
 ### Step 5: Data model — Refactor while green.
-- [ ] Share genome-locus helpers; keep tests green.
+- [x] Share genome-locus helpers; keep tests green.
 
 ### Step 6: Business logic — Red: tick-pass tests in W12 order. (US4.1–US4.3; BR10)
-- [ ] Write failing `packages/u3-fish/tests/tick.test.ts` (10): age accrual; growth toward 95% at maturityDays (well-fed vs starved); satiety decay 100/48; health regen/stressors (hunger/water/temp/crowd); sick < 40, critical < 15; juvenile→adult→senior transitions; death causes (starvation/oldAge) + no death while catchUp; tempFit crowdFactor. Record failing output.
+- [x] Write failing `packages/u3-fish/tests/tick.test.ts` (10): age accrual; growth toward 95% at maturityDays (well-fed vs starved); satiety decay 100/48; health regen/stressors (hunger/water/temp/crowd); sick < 40, critical < 15; juvenile→adult→senior transitions; death causes (starvation/oldAge) + no death while catchUp; tempFit crowdFactor. Record failing output.
 
 ### Step 7: Business logic — Green: implement fish-phase system.
-- [ ] `src/fish.ts`: registered `u3.fish` system (fish phase, W12 steps 2–7); reads water via U2 selectors, never writes Tank.
-- [ ] Run tick tests green.
+- [x] `src/fish.ts`: registered `u3.fish` system (fish phase, W12 steps 2–7); reads water via U2 selectors, never writes Tank.
+- [x] Run tick tests green.
 
 ### Step 8: Business logic — Refactor while green.
-- [ ] Extract pure transition functions; keep tests green.
+- [x] Extract pure transition functions; keep tests green.
 
 ### Step 9: API/endpoint (command bus + events) — Red: buy-path + event tests. (US2.1 AC2.1.1; BR11)
-- [ ] Write failing `packages/u3-fish/tests/lifecycle.test.ts` (7): sex distribution ~50/50; death explanations carry cause; maturity events; U6 buyFish trio emission observed through the real bus (U3 asserts its factory emitted nothing; trio asserted at the U6 handler level in U6's suite).
-- [ ] Record failing output.
+- [x] Write failing `packages/u3-fish/tests/lifecycle.test.ts` (7): sex distribution ~50/50; death explanations carry cause; maturity events; U6 buyFish trio emission observed through the real bus (U3 asserts its factory emitted nothing; trio asserted at the U6 handler level in U6's suite).
+- [x] Record failing output.
 
 ### Step 10: API/endpoint — Green: implement events + register.
-- [ ] `src/events.ts` (SimEventMap augmentation for U3-owned variants), `src/index.ts` (`register`: fish system; no commands — U3 owns none, acts via factories + systems).
-- [ ] Run lifecycle tests green.
+- [x] `src/events.ts` (SimEventMap augmentation for U3-owned variants), `src/index.ts` (`register`: fish system; no commands — U3 owns none, acts via factories + systems).
+- [x] Run lifecycle tests green.
 
 ### Step 11: API/endpoint — Refactor while green.
-- [ ] Consolidate cause-mapping helpers; keep tests green.
+- [x] Consolidate cause-mapping helpers; keep tests green.
 
 ### Step 12: Integration tests for key boundaries.
-- [ ] `packages/u3-fish/tests/integration.test.ts`: tick through the real U1 bus+registry with U2 water state (poor water → health falls → fishSick named cause; starvation → death with cause).
-- [ ] Benchmark probe `packages/u3-fish/tests/benchmark.test.ts`: 50 warmup, p95-of-300 timed fish-phase ticks ≤ 0.5 ms at 100 fish; heap growth < 64 KB/100 ticks (informational, opens `perf-regression` follow-up on exceedance).
+- [x] `packages/u3-fish/tests/integration.test.ts`: tick through the real U1 bus+registry with U2 water state (poor water → health falls → fishSick named cause; starvation → death with cause).
+- [x] Benchmark probe `packages/u3-fish/tests/benchmark.test.ts`: 50 warmup, p95-of-300 timed fish-phase ticks ≤ 0.5 ms at 100 fish; heap growth < 64 KB/100 ticks (informational, opens `perf-regression` follow-up on exceedance).
 
 ### Step 13: Documentation and traceability.
-- [ ] `code-summary.md`, `source-manifest.json`, `traceability.json` via `aidlc engine sensor-traceability --stage code-generation` mapping BR10/BR11 + NFR1.1/NFR3.1/NFR4.1/NFR4.2/NFR5.1 to the new files.
+- [x] `code-summary.md`, `source-manifest.json`, `traceability.json` via `aidlc engine sensor-traceability --stage code-generation` mapping BR10/BR11 + NFR1.1/NFR3.1/NFR4.1/NFR4.2/NFR5.1 to the new files.
 
 Repository/data-access (shared U1 store) and frontend layers are genuinely inapplicable and omitted without changing TDD methodology.
 
