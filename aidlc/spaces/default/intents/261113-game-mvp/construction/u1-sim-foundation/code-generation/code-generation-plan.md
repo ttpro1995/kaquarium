@@ -8,25 +8,25 @@
 
 ## Steps
 
-- [ ] Step 1: Project skeleton — `package.json` (Vite, Vitest, TypeScript), `tsconfig.json` (strict), `vitest.config.ts`, `eslint.config.js` (includes NFR3.2 `no-restricted-properties` + `no-restricted-globals` banned-API rules), `packages/u1-sim-foundation/` layout. (Supports all US9–US11 work.)
-- [ ] Step 2: Bootstrap the Vitest runner and record the unit-scoped command in `unit-test-instructions.md`; verify it runs (0 tests, green).
-- [ ] Step 3: Types + store Red — failing tests for `GameState`/`GameClock` (incl. BR1.3 `paused == (speed == 0)` invariant)/`RngState`/`Species`/`Settings`/`SaveEnvelope`/`SlotInfo`, `canonicalJson` pinning, read-only selectors. (US9.1–US11.1; BR1.3)
-- [ ] Step 4: Types + store Green — minimal implementation to pass.
-- [ ] Step 5: Types + store Refactor — improve while green.
-- [ ] Step 6: RNG + tick pipeline + registry Red — seeded stream replay, phase order feeding → water → fish → breeding → commerce → notify, duplicate registration throws, exhaustiveness gate. (AC10.2.1; BR1.1, BR2.1, BR4.1, BR4.2)
-- [ ] Step 7: RNG + tick pipeline + registry Green — minimal implementation.
-- [ ] Step 8: RNG + tick pipeline + registry Refactor — improve while green.
-- [ ] Step 9: Command bus + event drain Red — `settings.update`/`clock.setSpeed`/`clock.setPaused` validate-then-mutate, rejected commands touch nothing, drain-then-bump-then-dirty, subscriber isolation, `getFault()` empty by default. (AC10.1.1; BR1.2, BR3.1)
-- [ ] Step 10: Command bus + event drain Green — minimal implementation.
-- [ ] Step 11: Command bus + event drain Refactor — improve while green.
-- [ ] Step 12: Species catalog + persistence Red — catalogue validation (fail loudly dev / exclude-and-log prod), autosave rotation + verify-before-swap + fallback, export/import pipeline (shape + clock-invariant → version → checksum → migrate → rollback), recursive `__proto__`/`constructor`/`prototype` rejection, sync bundled SHA-256 digest, `deleteSlot` contract ( incl. SLOT_NOT_FOUND). (AC9.1.1, AC9.2.1, AC9.3.1, AC9.3.2; BR5.1, BR6.1–BR6.4; NFR4.1–NFR4.4)
-- [ ] Step 13: Species catalog + persistence Green — minimal implementation.
-- [ ] Step 14: Species catalog + persistence Refactor — improve while green.
-- [ ] Step 15: Catch-up + fault containment Red — 192-tick cap with `catchUp=true` threading, `whileYouWereAway` summary event, halt + discard + `getFault()` + U7-pollable reload offer, stopped clock as speed 0 + paused. (AC11.1.1; BR7.1; NFR4.2)
-- [ ] Step 16: Catch-up + fault containment Green, then Refactor while green.
-- [ ] Step 17: SaveLoadApi surface + selectors Red/Green/Refactor — `autosave`/`saveToSlot`/`listSlots`/`load`/`deleteSlot`/`exportFile`/`importFile`, `SlotInfo` rows, re-read-after-load behavior. (US9.1–US9.3)
-- [ ] Step 18: Benchmark harness (test-only, not shipped) — headless 100-fish tick probe (NFR1.1 protocol), 1/10/50/100 scaling curve (NFR1.3), autosave latency probe (NFR1.4); timings informational in CI, gated on device.
-- [ ] Step 19: Full unit run + coverage report; record results; hand to Build and Test for the 80% floor verdict on the assembled suite.
+- [x] Step 1: Project skeleton — `package.json` (Vite, Vitest, TypeScript), `tsconfig.json` (strict), `vitest.config.ts`, `eslint.config.js` (includes NFR3.2 `no-restricted-properties` + `no-restricted-globals` banned-API rules), `packages/u1-sim-foundation/` layout. (Supports all US9–US11 work.)
+- [x] Step 2: Bootstrap the Vitest runner and record the unit-scoped command in `unit-test-instructions.md`; verify it runs (0 tests, green).
+- [x] Step 3: Types + store Red — failing tests for `GameState`/`GameClock` (incl. BR1.3 `paused == (speed == 0)` invariant)/`RngState`/`Species`/`Settings`/`SaveEnvelope`/`SlotInfo`, `canonicalJson` pinning, read-only selectors. (US9.1–US11.1; BR1.3)
+- [x] Step 4: Types + store Green — minimal implementation to pass.
+- [x] Step 5: Types + store Refactor — improve while green.
+- [x] Step 6: RNG + tick pipeline + registry Red — seeded stream replay, phase order feeding → water → fish → breeding → commerce → notify, duplicate registration throws, exhaustiveness gate. (AC10.2.1; BR1.1, BR2.1, BR4.1, BR4.2)
+- [x] Step 7: RNG + tick pipeline + registry Green — minimal implementation.
+- [x] Step 8: RNG + tick pipeline + registry Refactor — improve while green.
+- [x] Step 9: Command bus + event drain Red — `settings.update`/`clock.setSpeed`/`clock.setPaused` validate-then-mutate, rejected commands touch nothing, drain-then-bump-then-dirty, subscriber isolation, `getFault()` empty by default. (AC10.1.1; BR1.2, BR3.1)
+- [x] Step 10: Command bus + event drain Green — minimal implementation.
+- [x] Step 11: Command bus + event drain Refactor — improve while green.
+- [x] Step 12: Species catalog + persistence Red — catalogue validation (fail loudly dev / exclude-and-log prod), autosave rotation + verify-before-swap + fallback, export/import pipeline (shape + clock-invariant → version → checksum → migrate → rollback), recursive `__proto__`/`constructor`/`prototype` rejection, sync bundled SHA-256 digest, `deleteSlot` contract ( incl. SLOT_NOT_FOUND). (AC9.1.1, AC9.2.1, AC9.3.1, AC9.3.2; BR5.1, BR6.1–BR6.4; NFR4.1–NFR4.4)
+- [x] Step 13: Species catalog + persistence Green — minimal implementation.
+- [x] Step 14: Species catalog + persistence Refactor — improve while green.
+- [x] Step 15: Catch-up + fault containment Red — 192-tick cap with `catchUp=true` threading, `whileYouWereAway` summary event, halt + discard + `getFault()` + U7-pollable reload offer, stopped clock as speed 0 + paused. (AC11.1.1; BR7.1; NFR4.2)
+- [x] Step 16: Catch-up + fault containment Green, then Refactor while green.
+- [x] Step 17: SaveLoadApi surface + selectors Red/Green/Refactor — `autosave`/`saveToSlot`/`listSlots`/`load`/`deleteSlot`/`exportFile`/`importFile`, `SlotInfo` rows, re-read-after-load behavior. (US9.1–US9.3)
+- [x] Step 18: Benchmark harness (test-only, not shipped) — headless 100-fish tick probe (NFR1.1 protocol), 1/10/50/100 scaling curve (NFR1.3), autosave latency probe (NFR1.4); timings informational in CI, gated on device.
+- [x] Step 19: Full unit run + coverage report; record results; hand to Build and Test for the 80% floor verdict on the assembled suite.
 
 ## Story-to-step map
 

@@ -1,0 +1,1 @@
+{"coverage":[{"id":"AC1.2.1","status":"OK","target":"BR8.1, BR8.2, BR8.3, BR9.3"},{"id":"AC1.2.2","status":"OK","target":"BR8.4"},{"id":"AC1.3.1","status":"OK","target":"BR8.2, BR8.6, BR9.1, BR9.2"},{"id":"AC1.3.2","status":"OK","target":"BR8.5, BR9.1"}],"stage":"functional-design","unit":"u2-tank-water","upstream_ids":["AC1.2.1","AC1.2.2","AC1.3.1","AC1.3.2"]}

@@ -153,9 +153,10 @@ shared-schema:
     - A duplicate system id, command type or notification mapper is a development-time error.
     - Only U7's composition root calls register(); its call order imposes no simulation order.
     - No Math.random, Date.now or other ambient nondeterminism inside a system; all randomness goes through ctx.rng.
+    - Exception (U2 BR9.3, U3 BR11.3, U4 BR13.3): U4's feeding path (feed command and auto-feeder system) may add waste to tank.water.waste and write Fish.satiety as the feeding transaction, U4's feedFry path may write the cohort's firstFoodDays/lastFryFedDay, and U6's commerce system may refresh the Fish.value cache from its price formula each commerce tick. U5 grading exception (U5 BR15.3): U5's breeding.grade handler may create Fish records via U3's spawnFish/inheritGenome (parents set, nursery-adjusted capacity pre-checked) — creation-via-U3-rules, mirroring U6's authorised buyFish trio emission. Purchase-path exception (U6 BR16.5): U2's tank.upgradeTier, tank.changeWater (volume fee), and food-purchase-adjacent handlers plus U4's food-purchase handler may deduct the U6-owned money scalar and emit moneyChanged on the U6 shape — validate-first, deduct-or-reject atomic, one moneyChanged per accepted call. These are the only allowlisted cross-entity writes; ownership checks distinguish them from a bug.
   tick:
     - One tick is one game hour; ticks are discrete and never partial.
-    - Live play queues ticks from elapsed real time at pause / x1 / x2 / x4.
+    - Live play queues ticks from elapsed real time at pause / x1 / x2 / x4. Live ticks are capped at 4 per rendered frame (x4 worst case; U2 NFR1.1 frame contract): excess ticks accumulate in the queue, never dropped (dropping would break determinism); sustained backlog surfaces through the loading state, and the 8 ms/frame total sim budget applies per frame regardless. Scheduler pacing: x1 advances 1 game-hour per real second; x2/x4 scale linearly (U7 NFR1.2 scheduler contract).
     - A tick runs every phase in order, then the drain sequence in C4, then bumps version and marks the state dirty.
     - Catch-up advances up to 8 game-days (192 ticks) through the same pipeline with catchUp=true, without rendering; 'coarse resolution' means the hourly simulation step with no per-frame rendering and one aggregated summary, not a different step size.
     - After the cap the clock stops; remaining wall-clock time is discarded.
@@ -230,8 +231,9 @@ const buyFish: CommandHandler<{ speciesId: SpeciesId }, { fishId: FishId; price:
   (state, payload, ctx) => {
     const species = ctx.species.get(payload.speciesId)
     if (!species) return { ok: false, error: { code: 'UNKNOWN_ENTITY', message: 'Unknown species.' } }
-    const occupancy = Object.values(state.fish).filter(f => f.tankId === state.tank.id).length
-    if (occupancy >= capacity(state.tank)) {
+    // TANK_FULL is bioload-based (U2 BR8.6): an unstocked fish has no satiety, so project with default activity 1.0.
+    const load = projectedBioload(state, species.adultSizeCm)
+    if (load > capacity(state.tank)) {
       return { ok: false, error: { code: 'TANK_FULL', message: 'The tank is full.' } }
     }
     if (state.money < species.buyPrice) {
@@ -240,6 +242,9 @@ const buyFish: CommandHandler<{ speciesId: SpeciesId }, { fishId: FishId; price:
     const fish = spawnFish(state, species, ctx.rng)
     state.money -= species.buyPrice
     ctx.events.push({ kind: 'fishBought', fishId: fish.id, speciesId: species.id, price: species.buyPrice })
+    // U3 design annotates this sketch: buyFish emits the trio fishBought + fishSpawned + moneyChanged,
+    // and U6's handler is the authorised emitter of U3's fishSpawned on this path (U3 W13). U6's mapper
+    // collapses the pair into one notification (confirmed in U6 design).
     ctx.events.push({ kind: 'moneyChanged', delta: -species.buyPrice, balance: state.money })
     return { ok: true, value: { fishId: fish.id, price: species.buyPrice } }
   }
@@ -312,7 +317,7 @@ The MVP target catalogue — every variant is `{ kind }` plus the fields below, 
 | `orderFulfilled` | U6 | `orderId: OrderId`, `reward: number` |
 | `orderExpired` | U6 | `orderId: OrderId` |
 | `levelUp` | U6 | `level: number` |
-| `moneyChanged` | U6 | `delta: number`, `balance: number` |
+| `moneyChanged` | U6, U2, U4 (purchase paths, same shape) | `delta: number`, `balance: number` |
 | `whileYouWereAway` | U1 | `elapsedDays: number`, `hatched: number`, `matured: number`, `diedOfOldAge: number`, `ordersExpired: number` |
 
 ```yaml
@@ -324,7 +329,7 @@ shared-schema:
     - A subscriber that throws cannot stop delivery to the others; U1 isolates each call.
     - subscribe() returns an unsubscribe function; a subscriber registered after a drain sees only later events.
   rules:
-    - Events are facts about what already happened. No consumer reads an event to change any entity except Notification.
+    - Events are facts about what already happened. No consumer reads an event to change any entity except Notification. Exception (U6 BR18.1, hatch XP): U6's commerce-phase system may count same-tick fryHatched events to award hatch XP (10 per event, once per sighting; the buffer clears per tick so replay and catch-up count identically).
     - The notification mapper is pure and is the only event-to-state mapping; U1 applies it before every drain.
     - Command-produced events and tick-produced events take the same path, so a command's events reach U7 once.
     - The buffer is cleared after every drain; nothing accumulates between ticks.

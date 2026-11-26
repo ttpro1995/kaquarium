@@ -1,0 +1,1 @@
+{"coverage":[{"id":"AC3.1.1","status":"OK","target":"BR12.1, BR12.2, BR12.4"},{"id":"AC3.1.2","status":"OK","target":"BR12.3"},{"id":"AC3.2.1","status":"OK","target":"BR13.1, BR13.3, BR13.4"},{"id":"AC3.2.2","status":"OK","target":"BR13.2"}],"stage":"functional-design","unit":"u4-feeding","upstream_ids":["AC3.1.1","AC3.1.2","AC3.2.1","AC3.2.2"]}
