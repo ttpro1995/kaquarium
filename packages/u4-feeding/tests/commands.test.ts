@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { createKernel, type Fish, type SimEvent } from '@aquarium/u1-sim-foundation';
 import { register } from '../src/index.js';
+import { WASTE_PER_PORTION } from '../src/food.js';
 
 function setup() {
   const kernel = createKernel(31);
@@ -63,8 +64,9 @@ describe('feeding commands through the bus (W16–W19)', () => {
     const foodId = stocked(kernel);
     kernel.store.state.fish.full = hungryFish('full', 100);
     const outcome = kernel.dispatch('feeding.feedFish', { foodId, portions: 4 });
-    expect(outcome).toEqual({ ok: true, value: { eaten: 0, leftover: 4, waste: 8 } });
-    expect(kernel.store.state.tank.water.waste).toBe(8);
+    expect(outcome).toEqual({ ok: true, value: { eaten: 0, leftover: 4, waste: 4 * WASTE_PER_PORTION } });
+    expect(outcome.ok && outcome.value.waste).toBe(8);
+    expect(kernel.store.state.tank.water.waste).toBe(4 * WASTE_PER_PORTION);
     expect(kernel.store.state.food[foodId]).toBeUndefined();
     expect(seen.flat()).toContainEqual({ kind: 'overfed', wasteDelta: 8 });
     expect(seen.flat()).toContainEqual({ kind: 'foodOut', foodId });
@@ -164,5 +166,42 @@ describe('feeding commands through the bus (W16–W19)', () => {
     const cleared = kernel.dispatch('feeding.setAutoFeeder', null);
     expect(cleared).toEqual({ ok: true, value: { set: false } });
     expect(kernel.store.state.feeding.schedule).toBeNull();
+  });
+
+  it('setAutoFeeder rejects fractional portions as INVALID_QUANTITY with no mutation', () => {
+    const { kernel } = setup();
+    kernel.store.state.tank.equipment.autoFeeder.installed = true;
+    const version = kernel.store.version;
+    expect(kernel.dispatch('feeding.setAutoFeeder', { foodKind: 'flakes', portions: 1.5, intervalHours: 6 }))
+      .toMatchObject({ ok: false, error: { code: 'INVALID_QUANTITY' } });
+    expect(kernel.dispatch('feeding.setAutoFeeder', { foodKind: 'flakes', portions: NaN, intervalHours: 6 }))
+      .toMatchObject({ ok: false, error: { code: 'INVALID_QUANTITY' } });
+    expect(kernel.store.state.feeding.schedule).toBeNull();
+    expect(kernel.store.version).toBe(version);
+  });
+
+  it('buyFood draws the food id from the seeded stream: same seed, same id', () => {
+    const first = setup();
+    const second = setup();
+    first.kernel.store.state.money = 100;
+    second.kernel.store.state.money = 100;
+    const a = first.kernel.dispatch('feeding.buyFood', { kind: 'flakes', qty: 1 });
+    const b = second.kernel.dispatch('feeding.buyFood', { kind: 'flakes', qty: 1 });
+    expect(a.ok && b.ok).toBe(true);
+    if (!a.ok || !b.ok) return;
+    expect(a.value.foodId).toBe(b.value.foodId);
+    expect(a.value.foodId).not.toBe('food-starter');
+  });
+
+  it('moneyChanged carries exactly the shared { delta, balance } payload shape', () => {
+    const { kernel, seen } = setup();
+    kernel.store.state.money = 100;
+    const outcome = kernel.dispatch('feeding.buyFood', { kind: 'pellets', qty: 3 });
+    expect(outcome.ok).toBe(true);
+    expect(seen).toHaveLength(1);
+    const event = seen[0]?.[0] as unknown as Record<string, unknown>;
+    expect(event?.kind).toBe('moneyChanged');
+    expect(Object.keys(event ?? {}).sort()).toEqual(['balance', 'delta', 'kind']);
+    expect(event).toEqual({ kind: 'moneyChanged', delta: -12, balance: 88 });
   });
 });

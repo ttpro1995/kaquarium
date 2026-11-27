@@ -90,6 +90,7 @@ export {
   MAX_NOTIFICATIONS,
   commerceNotificationMapper,
   enforceQueueCap,
+  syncNotificationSeq,
 } from './notifications.js';
 export {
   buyFish,

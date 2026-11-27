@@ -11,7 +11,7 @@ import {
 import { register as registerCommerce } from '../src/index.js';
 import { runCommerceTick } from '../src/commerce.js';
 import { runNotifyTick } from '../src/commerce.js';
-import { commerceNotificationMapper, enforceQueueCap } from '../src/notifications.js';
+import { commerceNotificationMapper, enforceQueueCap, syncNotificationSeq } from '../src/notifications.js';
 import { SELL_HEALTH_GATE } from '../src/pricing.js';
 import { demandFor, ensureMarketEntry } from '../src/market.js';
 
@@ -106,6 +106,17 @@ describe('BR16.3 atomic sell (US6.1)', () => {
     if (unknown.ok) throw new Error('unreachable');
     expect(unknown.error.code).toBe('UNKNOWN_ENTITY');
     expect(kernel.store.state.fish.a).toBeDefined();
+    // Catalogue-missing species rejects UNKNOWN_ENTITY atomically: nothing sold.
+    kernel.store.state.fish.ghost = adultFish('ghost', { speciesId: 'extinct' });
+    const moneyBefore = kernel.store.state.money;
+    const ghostBulk = kernel.dispatch('commerce.sellBulk', { fishIds: ['a', 'ghost'] });
+    expect(ghostBulk.ok).toBe(false);
+    if (ghostBulk.ok) throw new Error('unreachable');
+    expect(ghostBulk.error.code).toBe('UNKNOWN_ENTITY');
+    expect(kernel.store.state.fish.a).toBeDefined();
+    expect(kernel.store.state.fish.ghost).toBeDefined();
+    expect(kernel.store.state.money).toBe(moneyBefore);
+    delete kernel.store.state.fish.ghost;
     const bulk = kernel.dispatch('commerce.sellBulk', { fishIds: ['a', 'b', 'sick', 'a'] });
     expect(bulk.ok).toBe(true);
     if (!bulk.ok) return;
@@ -173,6 +184,25 @@ describe('BR17.2 fulfil (US7.1)', () => {
     expect(count.ok).toBe(false);
     if (count.ok) throw new Error('unreachable');
     expect(count.error.code).toBe('INVALID_SETTING');
+    expect(kernel.store.state.fish.a).toBeDefined();
+    // Past-deadline orders reject INVALID_SETTING (grace runs to end of deadlineDay).
+    kernel.store.state.clock.gameDay = 10;
+    kernel.store.state.orders.push({
+      id: 'o2',
+      speciesId: 'guppy',
+      customer: 'hobbyist',
+      quantity: 1,
+      minHealth: 40,
+      minSizeCm: 5,
+      multiplier: 1.2,
+      reward: 9,
+      deadlineDay: 9,
+      status: 'open',
+    });
+    const pastDue = kernel.dispatch('orders.fulfil', { orderId: 'o2', fishIds: ['a'] });
+    expect(pastDue.ok).toBe(false);
+    if (pastDue.ok) throw new Error('unreachable');
+    expect(pastDue.error.code).toBe('INVALID_SETTING');
     expect(kernel.store.state.fish.a).toBeDefined();
   });
 });
@@ -256,6 +286,16 @@ describe('BR19.2 mapper + notify system (US12.1)', () => {
     expect(commerceNotificationMapper({ kind: 'fishSick', fishId: 'x', cause: 'waterQuality' }, catalog)).toBeNull();
     expect(commerceNotificationMapper({ kind: 'fishSpawned', fishId: 'x', speciesId: 'g', tankId: 't' }, catalog)).toBeNull();
     expect(commerceNotificationMapper({ kind: 'moneyChanged', delta: 1, balance: 2 }, catalog)).toBeNull();
+    // Mapper ids are unique per call and survive reload: resync lifts the
+    // sequence above every persisted `notif-` id.
+    const first = commerceNotificationMapper({ kind: 'fishDied', fishId: 'x', cause: 'oldAge' }, catalog);
+    const second = commerceNotificationMapper({ kind: 'fishDied', fishId: 'y', cause: 'oldAge' }, catalog);
+    expect(first?.id).not.toBe(second?.id);
+    const reloaded = createInitialState(5);
+    reloaded.notifications.push({ id: 'notif-0000ffff', priority: 'info', kind: 'k', message: 'old' });
+    syncNotificationSeq(reloaded);
+    const after = commerceNotificationMapper({ kind: 'levelUp', level: 2 }, catalog);
+    expect(parseInt((after?.id ?? '').replace('notif-', ''), 16)).toBeGreaterThan(0xffff);
   });
 
   it('one tick of sick events yields exactly one warn (singleton or batch)', () => {

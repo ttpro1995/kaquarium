@@ -9,7 +9,8 @@ import type {
   GameState,
   Species,
 } from '@aquarium/u1-sim-foundation/state';
-import { COHORT_LOAD_PER_FRY } from '@aquarium/u2-tank-water';
+import { activityOf, COHORT_LOAD_PER_FRY } from '@aquarium/u2-tank-water';
+import { SPAWN_SATIETY } from '@aquarium/u3-fish';
 import { attemptCondition, attemptProbability, gatesPass, pairGates, type GateReport } from './breeding.js';
 import { breedingParamsFor } from './cohorts.js';
 
@@ -91,7 +92,11 @@ export interface GradePreview {
 /**
  * Confirm-screen projection (BR15.2, BR15.3): the same batch formula the
  * grade command enforces, plus the stunt outcome — computed, never
- * written. Unknown cohorts or species read as undefined.
+ * written. Unknown cohorts or species read as undefined. Projects each
+ * graded fry at newborn activity (adultSizeCm × activityOf(SPAWN_SATIETY),
+ * 1.2 at satiety 80) minus its nursery 0.05 share — never an
+ * under-estimate of the true post-grade load. Reads the last water-phase
+ * cached tank.bioload, like the grade guard.
  */
 export function gradePreview(
   state: GameState,
@@ -121,7 +126,8 @@ export function gradePreview(
       projectedLoad: state.tank.bioload, capacity, fits: false, stunted,
     };
   }
-  const projectedLoad = state.tank.bioload + count * (species.adultSizeCm - COHORT_LOAD_PER_FRY);
+  const projectedLoad =
+    state.tank.bioload + count * (species.adultSizeCm * activityOf(SPAWN_SATIETY) - COHORT_LOAD_PER_FRY);
   const fits = projectedLoad <= capacity;
   return {
     cohortId,

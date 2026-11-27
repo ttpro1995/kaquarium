@@ -2,6 +2,8 @@
 // Protocol: 50-pair/10-cohort fixture, 50 warmup ticks, p95 of 300 timed
 // breeding-phase ticks <= 0.125 ms; heap growth < 64 KB over 100 ticks.
 // Any exceedance opens a tracked perf-regression follow-up (never blocks).
+// Load-sensitive probe: run isolated (single-package vitest) when the
+// pair hot loop or gate checks change — machine load skews p95.
 import { describe, expect, it } from 'vitest';
 import {
   createInitialState,

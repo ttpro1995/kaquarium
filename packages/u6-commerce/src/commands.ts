@@ -18,6 +18,7 @@ import { applySaleSaturation } from './market.js';
 import { fulfilReward } from './orders.js';
 import { addXp, xpForReward, xpForSale } from './progression.js';
 import { isSellableHealth, priceForFish } from './pricing.js';
+import { syncNotificationSeq } from './notifications.js';
 import './events.js';
 
 export interface BuyFishPayload {
@@ -101,6 +102,7 @@ function eggLayerLocked(state: GameState, archetype: string): boolean {
  * moneyChanged atomically.
  */
 export const buyFish: CommandHandler<BuyFishPayload, BuyFishResult> = (state, payload, ctx) => {
+  syncNotificationSeq(state);
   const speciesId = (payload as Partial<BuyFishPayload> | null)?.speciesId;
   if (typeof speciesId !== 'string' || speciesId.length === 0) {
     return { ok: false, error: { code: 'UNKNOWN_ENTITY', message: `Unknown species '${String(speciesId)}'.` } };
@@ -127,15 +129,20 @@ export const buyFish: CommandHandler<BuyFishPayload, BuyFishResult> = (state, pa
   return { ok: true, value: { fishId: fish.id, price: species.buyPrice } };
 };
 
-/** Shared single-sale core: priced at live demand, saturated after. */
+/** Shared single-sale core: priced at live demand, saturated after.
+ * Returns undefined for a catalogue-missing species (priceForFish is
+ * undefined) WITHOUT mutating: the caller rejects UNKNOWN_ENTITY, so a
+ * rejected command leaves the store untouched by construction, never by
+ * rollback. Never throws.
+ */
 function sellOne(
   state: GameState,
   fish: Fish,
   events: SimEvent[],
   speciesOf: (id: string) => unknown,
-): { price: number } {
+): { price: number } | undefined {
   const price = priceOf(state, fish, speciesOf);
-  if (price === undefined) throw new Error(`sellOne: UNKNOWN_ENTITY species '${fish.speciesId}'`);
+  if (price === undefined) return undefined;
   delete state.fish[fish.id];
   state.money += price;
   ensureMarketEntry(state, fish.speciesId, state.clock.gameDay);
@@ -146,10 +153,12 @@ function sellOne(
 }
 
 /**
- * W28 single sell (BR16.2, BR16.3): UNKNOWN_ENTITY > FISH_UNSELLABLE,
+ * W28 single sell (BR16.2, BR16.3): UNKNOWN_ENTITY (unknown fish, or fish
+ * whose species is missing from the catalogue) > FISH_UNSELLABLE,
  * then remove/pay/saturate/XP with one fishSold + one moneyChanged.
  */
 export const sellFish: CommandHandler<SellFishPayload, SellFishResult> = (state, payload, ctx) => {
+  syncNotificationSeq(state);
   const fishId = (payload as Partial<SellFishPayload> | null)?.fishId;
   const fish = typeof fishId === 'string' ? state.fish[fishId] : undefined;
   if (fish === undefined) {
@@ -159,18 +168,25 @@ export const sellFish: CommandHandler<SellFishPayload, SellFishResult> = (state,
     return { ok: false, error: { code: 'FISH_UNSELLABLE', message: 'That fish is too sick to sell.' } };
   }
   const speciesOf = (id: string): unknown => ctx.species.get(id);
-  const { price } = sellOne(state, fish, ctx.events, speciesOf);
-  ctx.events.push({ kind: 'moneyChanged', delta: price, balance: state.money });
-  return { ok: true, value: { price } };
+  const sale = sellOne(state, fish, ctx.events, speciesOf);
+  if (sale === undefined) {
+    return { ok: false, error: { code: 'UNKNOWN_ENTITY', message: `Unknown species '${fish.speciesId}'.` } };
+  }
+  ctx.events.push({ kind: 'moneyChanged', delta: sale.price, balance: state.money });
+  return { ok: true, value: { price: sale.price } };
 };
 
 /**
  * W28 bulk sell (BR16.2, BR16.3): empty list -> INVALID_QUANTITY;
  * dedupe, then unknown ids -> UNKNOWN_ENTITY (strict); sick entries are
- * skipped and the eligible remainder proceeds (empty -> FISH_UNSELLABLE).
- * Saturation applies per fish sequentially; one moneyChanged for the total.
+ * skipped and the eligible remainder proceeds (empty -> FISH_UNSELLABLE);
+ * eligible fish with a catalogue-missing species -> UNKNOWN_ENTITY with
+ * nothing sold (pre-checked before the first mutation, so the sale stays
+ * atomic). Saturation applies per fish sequentially; one moneyChanged
+ * for the total.
  */
 export const sellBulk: CommandHandler<SellBulkPayload, SellBulkResult> = (state, payload, ctx) => {
+  syncNotificationSeq(state);
   const fishIds = (payload as Partial<SellBulkPayload> | null)?.fishIds;
   if (!Array.isArray(fishIds) || fishIds.length === 0) {
     return { ok: false, error: { code: 'INVALID_QUANTITY', message: 'Bulk sale needs at least one fish.' } };
@@ -187,10 +203,25 @@ export const sellBulk: CommandHandler<SellBulkPayload, SellBulkResult> = (state,
     return { ok: false, error: { code: 'FISH_UNSELLABLE', message: 'No eligible fish in the bulk sale.' } };
   }
   const speciesOf = (id: string): unknown => ctx.species.get(id);
+  for (const id of eligible) {
+    if (priceOf(state, state.fish[id] as Fish, speciesOf) === undefined) {
+      return {
+        ok: false,
+        error: { code: 'UNKNOWN_ENTITY', message: `Unknown species '${(state.fish[id] as Fish).speciesId}'.` },
+      };
+    }
+  }
   let total = 0;
   for (const id of eligible) {
     const fish = state.fish[id] as Fish;
-    total += sellOne(state, fish, ctx.events, speciesOf).price;
+    const sale = sellOne(state, fish, ctx.events, speciesOf);
+    if (sale === undefined) {
+      return {
+        ok: false,
+        error: { code: 'UNKNOWN_ENTITY', message: `Unknown species '${fish.speciesId}'.` },
+      };
+    }
+    total += sale.price;
   }
   ctx.events.push({ kind: 'moneyChanged', delta: total, balance: state.money });
   return { ok: true, value: { sold: eligible.length, skipped, total } };
@@ -202,12 +233,17 @@ function findOrder(state: GameState, orderId: string): Order | undefined {
 
 /**
  * W31 fulfil (BR17.2): precedence UNKNOWN_ENTITY (order, then any fish) >
- * FISH_UNSELLABLE (any health < 40) > INVALID_SETTING (closed order,
- * count/species/health/size mismatch). Removes the fish, pays the
- * fulfil-time premium (no saturation, no fishSold), rep +1, XP
- * floor(reward/4), emits orderFulfilled + moneyChanged.
+ * FISH_UNSELLABLE (any health < 40) > INVALID_SETTING (past deadline,
+ * closed order, count/species/health/size mismatch). Removes the fish,
+ * pays the fulfil-time premium (no saturation, no fishSold), rep +1, XP
+ * floor(reward/4), emits orderFulfilled + moneyChanged. Deadline grace is
+ * explicit: fulfil is allowed through the end of deadlineDay and rejects
+ * once gameDay passes it — the same boundary at which midnight expiry
+ * prunes the order, so the board can never show a fillable past-due order
+ * after the next midnight.
  */
 export const fulfil: CommandHandler<FulfilPayload, FulfilResult> = (state, payload, ctx) => {
+  syncNotificationSeq(state);
   const body = (payload as Partial<FulfilPayload> | null) ?? {};
   const order = typeof body.orderId === 'string' ? findOrder(state, body.orderId) : undefined;
   if (order === undefined || !Array.isArray(body.fishIds)) {
@@ -227,6 +263,9 @@ export const fulfil: CommandHandler<FulfilPayload, FulfilResult> = (state, paylo
     if (!isSellableHealth((state.fish[id] as Fish).health)) {
       return { ok: false, error: { code: 'FISH_UNSELLABLE', message: 'That order needs healthy fish.' } };
     }
+  }
+  if (state.clock.gameDay > order.deadlineDay) {
+    return { ok: false, error: { code: 'INVALID_SETTING', message: 'That order is past its deadline.' } };
   }
   if (order.status !== 'open' || deduped.length !== order.quantity) {
     return { ok: false, error: { code: 'INVALID_SETTING', message: 'That order cannot be fulfilled.' } };
@@ -258,6 +297,7 @@ export const fulfil: CommandHandler<FulfilPayload, FulfilResult> = (state, paylo
 
 /** W35 dismiss (BR19.3): unknown ids reject; nothing else mutates. */
 export const dismiss: CommandHandler<DismissPayload, DismissResult> = (state, payload, _ctx) => {
+  syncNotificationSeq(state);
   const notificationId = (payload as Partial<DismissPayload> | null)?.notificationId;
   const index =
     typeof notificationId === 'string' ? state.notifications.findIndex((n) => n.id === notificationId) : -1;

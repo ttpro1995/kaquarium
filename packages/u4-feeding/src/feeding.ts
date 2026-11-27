@@ -17,12 +17,21 @@ import {
   usableFoodStacks,
   WASTE_PER_PORTION,
 } from './food.js';
-import { absoluteHour, isScheduleDue } from './schedule.js';
+import { isScheduleDue } from './schedule.js';
 import './events.js';
 
 export interface DispenseResult {
   eaten: number;
   leftover: number;
+}
+
+export interface DispenseOptions {
+  /**
+   * System path only: skip the per-stack fed; the scheduled run emits one
+   * aggregated fed with the total instead. Manual commands leave the
+   * default (one fed per call).
+   */
+  emitFed?: boolean;
 }
 
 /** Appetite order: ascending satiety, roster (insertion) order on ties. */
@@ -62,7 +71,8 @@ function consumeStack(state: GameState, events: SimEvent[], stack: FoodItem, d: 
  * into the tank's fish. Each portion restores restorePerPortion to the
  * hungriest non-full fish (capped at 100); portions nobody can take
  * become waste. Returns null when the stack cannot dispense (expired
- * or dry) with nothing mutated or emitted.
+ * or dry) with nothing mutated or emitted. Emits one fed per call unless
+ * opts.emitFed is false (the scheduled run aggregates across stacks).
  */
 export function dispenseToFish(
   state: GameState,
@@ -70,6 +80,7 @@ export function dispenseToFish(
   stack: FoodItem,
   portions: number,
   today: number = state.clock.gameDay,
+  opts: DispenseOptions = {},
 ): DispenseResult | null {
   if (stack.qty <= 0 || isExpired(stack, today)) return null;
   const d = Math.min(portions, stack.qty);
@@ -84,7 +95,9 @@ export function dispenseToFish(
   }
   consumeStack(state, events, stack, d);
   depositWaste(state, events, d - eaten);
-  events.push({ kind: 'fed', foodId: stack.id, portion: eaten });
+  if (opts.emitFed !== false) {
+    events.push({ kind: 'fed', foodId: stack.id, portion: eaten });
+  }
   return { eaten, leftover: d - eaten };
 }
 
@@ -109,7 +122,9 @@ export function dispenseToFry(
   consumeStack(state, events, stack, d);
   depositWaste(state, events, d - eaten);
   events.push({ kind: 'fed', foodId: stack.id, portion: eaten });
-  if (today !== cohort.lastFryFedDay) {
+  // Only a feed that lands counts as a first-food day (eaten == 0 when the
+  // cohort is empty: need is 0, so nothing is eaten).
+  if (eaten > 0 && today !== cohort.lastFryFedDay) {
     cohort.firstFoodDays += 1;
     cohort.lastFryFedDay = today;
   }
@@ -136,6 +151,9 @@ export function expirySweep(state: GameState, events: SimEvent[], today: number)
 /** One feeding phase: expiry sweep, then the scheduled run (BR13.4). */
 export function runFeedingTick(ctx: TickContext): void {
   const state = ctx.state;
+  // Single time authority: today and nowHour both derive from ctx.now, the
+  // tick's dispatched time. Never mix in state.clock here; the stored clock
+  // can lag the dispatched context by a tick.
   const today = ctx.now.day;
   if (ctx.now.hour === 0) {
     expirySweep(state, ctx.events, today);
@@ -143,17 +161,28 @@ export function runFeedingTick(ctx: TickContext): void {
   const schedule = state.feeding.schedule;
   if (schedule === null) return;
   if (!state.tank.equipment.autoFeeder.installed) return;
-  const nowHour = absoluteHour(state);
+  const nowHour = ctx.now.day * 24 + ctx.now.hour;
   if (!isScheduleDue(schedule, nowHour)) return;
   // Silent skip on dry shelves: the foodOut warning already fired at 0.
   const shelves = usableFoodStacks(state, schedule.foodKind, today);
   if (shelves.length === 0) return;
   let remaining = schedule.portions;
+  let eatenTotal = 0;
+  let firstId: string | null = null;
   for (const stack of shelves) {
     if (remaining <= 0) break;
     const take = Math.min(remaining, stack.qty);
-    dispenseToFish(state, ctx.events, stack, take, today);
+    const result = dispenseToFish(state, ctx.events, stack, take, today, { emitFed: false });
+    if (result === null) continue;
+    if (firstId === null) firstId = stack.id;
+    eatenTotal += result.eaten;
     remaining -= take;
+  }
+  // One fed per scheduled run with the total eaten, attributed to the
+  // first (oldest) stack drawn. Per-stack facts keep their own events
+  // (overfed per leftovers, foodOut per drained stack).
+  if (firstId !== null) {
+    ctx.events.push({ kind: 'fed', foodId: firstId, portion: eatenTotal });
   }
   // One run per tick, never a backlog catch-up: clock jumps to now.
   schedule.lastRunHour = nowHour;

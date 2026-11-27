@@ -42,7 +42,7 @@ import {
   xpForReward,
   xpForSale,
 } from '../src/progression.js';
-import { ELECTRICITY_COST, applyMidnightCosts, runCommerceTick } from '../src/commerce.js';
+import { ELECTRICITY_COST, applyMidnightCosts, fastPriceForFish, runCommerceTick } from '../src/commerce.js';
 
 function guppy(extra: Record<string, unknown> = {}): Species {
   const base: Species = {
@@ -186,7 +186,22 @@ describe('BR16.1 eight-factor price bands', () => {
     for (const id in state.fish) {
       const fish = state.fish[id] as Fish;
       expect(fish.value).toBe(priceForFish(fish, species, 0.8, 1));
+      // The exported fast path agrees with the canonical formula too
+      // (deliberate duplication for the NFR1.1 hot loop — see pricing.ts).
+      expect(fastPriceForFish(fish, species, 0.8, 1)).toBe(priceForFish(fish, species, 0.8, 1));
     }
+    // Unknown catalogue species: the display cache falls back to 0, never stale.
+    state.fish.ghost = adultFish('ghost', { speciesId: 'extinct' });
+    runCommerceTick({
+      state,
+      tick: 2,
+      now: { day: 1, hour: 6 },
+      rng: createRng(state.rngState),
+      species: catalog,
+      events: [],
+      catchUp: false,
+    });
+    expect((state.fish.ghost as Fish).value).toBe(0);
   });
 });
 
@@ -273,6 +288,13 @@ describe('BR19.1 midnight electricity', () => {
     const deducted = applyMidnightCosts(state);
     expect(deducted).toBe(3);
     expect(state.money).toBe(0);
+    // Midnight deductions emit moneyChanged so the C4 money trail stays complete.
+    const charged = createInitialState(1, { money: 100 });
+    charged.tank.tier = 2;
+    const ledger: { kind: string; [k: string]: unknown }[] = [];
+    expect(applyMidnightCosts(charged, ledger)).toBe(12);
+    expect(charged.money).toBe(88);
+    expect(ledger).toEqual([{ kind: 'moneyChanged', delta: -12, balance: 88 }]);
   });
 
   it('fulfil reward carries the rep bonus and floors', () => {

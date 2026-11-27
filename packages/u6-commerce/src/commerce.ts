@@ -21,18 +21,29 @@ import { expireOrders, openOrders, pruneBoard, upkeepBoard } from './orders.js';
 import { HATCH_XP, addXp } from './progression.js';
 import { MARKET_FACTOR_MAX, MARKET_FACTOR_MIN, SIZE_FACTOR_MAX, SIZE_FACTOR_MIN } from './pricing.js';
 import { demandFor, trendFor } from './market.js';
-import { enforceQueueCap } from './notifications.js';
+import { enforceQueueCap, syncNotificationSeq } from './notifications.js';
 import './events.js';
 
 /** Midnight tier electricity in $FISH (BR19.1): no debt, no shutoff. */
 export const ELECTRICITY_COST: Record<1 | 2 | 3, number> = { 1: 5, 2: 12, 3: 25 };
 
-/** Midnight costs: money = max(0, money - cost). Returns the deducted amount. */
-export function applyMidnightCosts(state: GameState): number {
+/**
+ * Midnight costs: money = max(0, money - cost). Returns the deducted amount.
+ * Emits moneyChanged into the tick buffer when a caller passes events, so
+ * the C4 money trail covers the nightly deduction (the mapper maps it to
+ * null, so the queue stays quiet); U7 reads the balance from state.money.
+ */
+export function applyMidnightCosts(
+  state: GameState,
+  events?: { kind: string; [k: string]: unknown }[],
+): number {
   const tier = state.tank.tier;
   const cost = tier === 2 ? ELECTRICITY_COST[2] : tier === 3 ? ELECTRICITY_COST[3] : ELECTRICITY_COST[1];
   const deducted = Math.min(state.money, cost);
   state.money -= deducted;
+  if (events !== undefined && deducted > 0) {
+    events.push({ kind: 'moneyChanged', delta: -deducted, balance: state.money });
+  }
   return deducted;
 }
 
@@ -47,7 +58,15 @@ export function refreshFishValues(
     const entry = fish[id];
     if (entry === undefined) continue;
     const species = speciesOf(entry.speciesId);
-    if (species === undefined) continue;
+    if (species === undefined) {
+      // Explicit fallback (review): a catalogue-missing species is not
+      // priceable, so the cache shows 0 rather than a stale value from
+      // before the catalogue entry vanished. Display-only: sell/fulfil
+      // never read this cache (the live formula rejects UNKNOWN_ENTITY),
+      // so 0 can never become a price input.
+      entry.value = 0;
+      continue;
+    }
     const cached = inputs?.get(entry.speciesId);
     entry.value = fastPriceForFish(
       entry,
@@ -64,6 +83,14 @@ export function refreshFishValues(
  * and the interpreter stay within budget at 40 fish. priceForFish
  * remains the canonical readable implementation; the suite asserts
  * both agree across a genome sweep.
+ *
+ * Deliberate duplication (review): this function and the inline loop in
+ * runCommerceTick repeat the priceForFish arithmetic instead of calling
+ * it, trading one canonical call path for the NFR1.1 hot-loop budget.
+ * All three copies must agree factor-for-factor — enforced by
+ * tests/pricing.test.ts 'tick-refreshed Fish.value equals the canonical
+ * formula', which asserts both fast paths equal the canonical formula
+ * across a genome sweep. Change one, change all three, then run the sweep.
  */
 export function fastPriceForFish(
   fish: { sizeCm: number; stage: Fish['stage']; health: number; genome: Record<string, unknown> },
@@ -114,13 +141,14 @@ export function hatchEventsSeen(events: readonly { kind: string }[]): number {
 /** One commerce phase (W29–W34 minus notify-owned work). */
 export function runCommerceTick(ctx: TickContext): void {
   const { state, now, rng, species } = ctx;
+  syncNotificationSeq(state);
   const all = species.all();
   ensureMarketEntries(state, all, now.day);
   const dayBoundary = now.hour === 0;
   if (dayBoundary) {
     recoverDemand(state);
     maybeRollTrends(state, rng, now.day);
-    applyMidnightCosts(state);
+    applyMidnightCosts(state, ctx.events);
     expireOrders(state, now.day, ctx.events);
     pruneBoard(state);
   }
@@ -138,9 +166,11 @@ export function runCommerceTick(ctx: TickContext): void {
     );
   }
   // Per-tick value refresh inline: property reads and arithmetic only, no
-  // per-fish calls (NFR1.1). Mirrors priceForFish factor-for-factor; the
-  // pricing suite asserts tick-refreshed values equal the canonical
-  // formula across a genome sweep. Per-species market terms hoist out of
+  // per-fish calls (NFR1.1). Deliberate duplication (review): this loop is
+  // the third copy of the priceForFish arithmetic (canonical form in
+  // pricing.ts, fastPriceForFish above); the pricing suite asserts all
+  // three agree across a genome sweep (see the duplication note on
+  // fastPriceForFish). Per-species market terms hoist out of
   // the loop; immutable genome terms memoize per Fish object.
   const cache: Record<string, { entry: Species | undefined; base: number }> = {};
   const market = state.market;
@@ -163,7 +193,12 @@ export function runCommerceTick(ctx: TickContext): void {
       };
       cache[entry.speciesId] = cached;
     }
-    if (cached.entry === undefined) continue;
+    if (cached.entry === undefined) {
+      // Explicit fallback, mirroring refreshFishValues: catalogue-missing
+      // species is not priceable, so the cache shows 0, never stale.
+      entry.value = 0;
+      continue;
+    }
     let sizeF =
       cached.entry.adultSizeCm > 0 ? entry.sizeCm / cached.entry.adultSizeCm : SIZE_FACTOR_MIN;
     if (sizeF < SIZE_FACTOR_MIN) sizeF = SIZE_FACTOR_MIN;
@@ -225,6 +260,7 @@ export type FishSickCause = 'waterQuality' | 'temperature';
  * buffer holds the whole tick.
  */
 export function runNotifyTick(ctx: TickContext): void {
+  syncNotificationSeq(ctx.state);
   const sick: { fishId: string }[] = [];
   for (const event of ctx.events) {
     const record = event as { kind: string; fishId?: unknown };

@@ -109,13 +109,80 @@ describe('v1 -> v2 migration (breaking-change register)', () => {
     expect(migrated.orders[0]).not.toHaveProperty('deadline');
     expect(migrated.orders[0]).not.toHaveProperty('minQuality');
     expect(migrated.orders[1].deadlineDay).toBe(8);
-    expect(migrated.notifications[0].subjectId).toBe('');
+    // Absent subjectId stays absent (optional field; never filled with '').
+    expect(migrated.notifications[0]).not.toHaveProperty('subjectId');
   });
 
-  it('refuses a v1 payload with an unknown tier', () => {
-    expect(() =>
-      migrateV1ToV2(v1Fixture({ tank: { id: 't', tier: 9, volumeL: 50, water: {}, equipment: [], bioload: 0, biofilterMaturity: 0 } })),
-    ).toThrow();
+  it('defaults an unknown tier to 1 with the tier-1 volume (never refuses)', () => {
+    const migrated = migrateV1ToV2(
+      v1Fixture({ tank: { id: 't', tier: 9, volumeL: 50, water: {}, equipment: [], bioload: 0, biofilterMaturity: 0 } }),
+    ) as Record<string, any>;
+    expect(migrated.tank.tier).toBe(1);
+    expect(migrated.tank.volumeL).toBe(20);
+  });
+
+  it('preserves an existing valid deadlineDay and only derives from a legacy deadline', () => {
+    const migrated = migrateV1ToV2(
+      v1Fixture({
+        clock: { gameDay: 5, gameHour: 8, speed: 1, paused: false },
+        orders: [
+          // v2-shaped already: kept as-is, legacy deadline absent.
+          { id: 'o1', speciesId: 's', quantity: 1, deadlineDay: 12, minHealth: 40, reward: 20, status: 'open' },
+          // v2-shaped but stale deadlineDay stays untouched: migration never re-derives.
+          { id: 'o2', speciesId: 's', quantity: 1, deadlineDay: 2, minHealth: 40, reward: 20, status: 'open' },
+        ],
+      }),
+    ) as Record<string, any>;
+    expect(migrated.orders[0].deadlineDay).toBe(12);
+    expect(migrated.orders[1].deadlineDay).toBe(2);
+  });
+
+  it('defaults minHealth to 0 when neither minHealth nor legacy minQuality is present', () => {
+    const migrated = migrateV1ToV2(
+      v1Fixture({
+        orders: [
+          { id: 'o1', speciesId: 's', quantity: 1, deadlineDay: 9, reward: 20, status: 'open' },
+        ],
+      }),
+    ) as Record<string, any>;
+    expect(migrated.orders[0].minHealth).toBe(0);
+  });
+
+  it('grants the BR12.4 starter to an empty cupboard, dated to the migrated day', () => {
+    const migrated = migrateV1ToV2(
+      v1Fixture({ clock: { gameDay: 5, gameHour: 8, speed: 1, paused: false }, food: {} }),
+    ) as Record<string, any>;
+    expect(migrated.food['food-starter']).toMatchObject({
+      id: 'food-starter',
+      kind: 'flakes',
+      qty: 10,
+      acquiredDay: 5,
+      target: 'fish',
+    });
+  });
+
+  it('never injects the starter when the cupboard already has stock', () => {
+    const migrated = migrateV1ToV2(
+      v1Fixture({
+        food: { st1: { id: 'st1', kind: 'flakes', qty: 4, quality: 0.7, shelfLifeDays: 30 } },
+      }),
+    ) as Record<string, any>;
+    expect(Object.keys(migrated.food)).toEqual(['st1']);
+    expect(migrated.food['food-starter']).toBeUndefined();
+  });
+
+  it('is pure: the input payload is left untouched', () => {
+    const input = v1Fixture({
+      clock: { gameDay: 5, gameHour: 8, speed: 1, paused: false },
+      food: { st1: { id: 'st1', kind: 'flakes', qty: 4, quality: 0.7, shelfLifeDays: 30 } },
+      orders: [
+        { id: 'o1', speciesId: 's', quantity: 2, deadline: 9, minQuality: 50, reward: 40, status: 'open' },
+      ],
+      notifications: [{ id: 'n1', priority: 'info', kind: 'x', message: 'hi' }],
+    });
+    const before = JSON.parse(JSON.stringify(input));
+    migrateV1ToV2(input);
+    expect(input).toEqual(before);
   });
 });
 

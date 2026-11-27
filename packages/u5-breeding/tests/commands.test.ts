@@ -167,6 +167,7 @@ describe('breeding.grade (US5.2–US5.3)', () => {
   it('grades ready fry into U3-rule Fish with parents and the stunt flag', () => {
     const { kernel, species, seen } = setup();
     readyCohort(kernel, species, 10);
+    kernel.store.state.tank.volumeL = 1000; // isolate fish creation from the capacity guard
     const fishBefore = Object.keys(kernel.store.state.fish).length;
     const outcome = kernel.dispatch('breeding.grade', { cohortId: 'c1', count: 4 });
     expect(outcome).toEqual({ ok: true, value: { graded: 4, stunted: 4 } });
@@ -268,18 +269,58 @@ describe('breeding.grade (US5.2–US5.3)', () => {
 
   it('guards capacity with the batch formula, all-or-nothing', () => {
     const { kernel, species } = setup();
-    // Bioload 0, volume 20: 4 × (5 − 0.05) = 19.8 fits, 5 × 4.95 = 24.75 does not.
+    // Bioload 0, volume 20: newborns land at 5 × 1.2 = 6 each, so
+    // 3 × (6 − 0.05) = 17.85 fits, 4 × 5.95 = 23.8 does not.
     readyCohort(kernel, species, 10);
-    expect(kernel.dispatch('breeding.grade', { cohortId: 'c1', count: 5 })).toEqual({
+    expect(kernel.dispatch('breeding.grade', { cohortId: 'c1', count: 4 })).toEqual({
       ok: false,
       error: expect.objectContaining({ code: 'TANK_FULL' }),
     });
     expect(kernel.store.state.cohorts.c1?.count).toBe(10);
     expect(Object.keys(kernel.store.state.fish)).toHaveLength(2);
-    expect(kernel.dispatch('breeding.grade', { cohortId: 'c1', count: 4 })).toEqual({
+    expect(kernel.dispatch('breeding.grade', { cohortId: 'c1', count: 3 })).toEqual({
       ok: true,
-      value: { graded: 4, stunted: 4 },
+      value: { graded: 3, stunted: 3 },
     });
+  });
+
+  it('grades at newborn activity: near-capacity fit recomputes within volume', async () => {
+    const { activityOf, recomputeBioload, COHORT_LOAD_PER_FRY } = await import('@aquarium/u2-tank-water');
+    const { SPAWN_SATIETY } = await import('@aquarium/u3-fish');
+    const { kernel, species } = setup();
+    // Newborns arrive at SPAWN_SATIETY (activity 1.2), so each graded fry
+    // lands at adultSizeCm × 1.2 — the guard must project that, never 1.0.
+    const newbornLoad = species.adultSizeCm * activityOf(SPAWN_SATIETY);
+    expect(activityOf(SPAWN_SATIETY)).toBe(1.2);
+    expect(newbornLoad).toBeCloseTo(6, 10);
+    readyCohort(kernel, species, 10);
+    // Sync the cached guard base the way the water phase does, so the
+    // capacity check starts from truth: 2 adults at 6 each + 10 fry at
+    // 0.05 = 12.5. Volume 34 splits old vs new: the old 1.0-activity
+    // formula allows 4 (12.5 + 4 × 4.95 = 32.3 ≤ 34) but the true
+    // newborn load breaches (12.5 + 4 × 5.95 = 36.3 > 34).
+    kernel.store.state.tank.volumeL = 34;
+    kernel.store.state.tank.bioload = recomputeBioload(
+      kernel.store.state,
+      (id) => kernel.species.get(id)?.adultSizeCm,
+    );
+    expect(kernel.store.state.tank.bioload).toBeCloseTo(12.5, 10);
+    expect(kernel.dispatch('breeding.grade', { cohortId: 'c1', count: 4 })).toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: 'TANK_FULL' }),
+    });
+    expect(kernel.dispatch('breeding.grade', { cohortId: 'c1', count: 3 })).toEqual({
+      ok: true,
+      value: { graded: 3, stunted: 3 },
+    });
+    // Recompute the true post-grade load from live fish + remainder fry:
+    // 2 adults (12) + 3 newborns at 6 each + 7 ungraded fry at 0.05.
+    const recomputed = recomputeBioload(
+      kernel.store.state,
+      (id) => kernel.species.get(id)?.adultSizeCm,
+    );
+    expect(recomputed).toBeCloseTo(12 + 3 * newbornLoad + 7 * COHORT_LOAD_PER_FRY, 10);
+    expect(recomputed).toBeLessThanOrEqual(kernel.store.state.tank.volumeL);
   });
 
   it('emits the lifecycle trio and previews without mutating', () => {    const fertile = guppy({ clutch: [6, 6], gestationDays: 1, cycleDays: 30, speciesBaseRate: 24 });
@@ -346,12 +387,12 @@ describe('breeding selectors (U7 panels)', () => {
     const { kernel, species } = setup();
     readyCohort(kernel, species, 10);
     const before = canonicalJson({ fish: kernel.store.state.fish, cohorts: kernel.store.state.cohorts });
-    // Ready batch fits: 4 × 4.95 = 19.8 ≤ 20.
-    expect(gradePreview(kernel.store.state, species, 'c1', 4)).toMatchObject({
+    // Ready batch fits: 3 × (6 − 0.05) = 17.85 ≤ 20 (newborns at 1.2 activity).
+    expect(gradePreview(kernel.store.state, species, 'c1', 3)).toMatchObject({
       ready: true, reason: null, fits: true, stunted: true, capacity: 20,
     });
-    // The same batch over capacity.
-    expect(gradePreview(kernel.store.state, species, 'c1', 5)).toMatchObject({
+    // The same batch over capacity: 4 × 5.95 = 23.8 > 20.
+    expect(gradePreview(kernel.store.state, species, 'c1', 4)).toMatchObject({
       ready: false, reason: 'tank-full', fits: false,
     });
     // Bad counts.

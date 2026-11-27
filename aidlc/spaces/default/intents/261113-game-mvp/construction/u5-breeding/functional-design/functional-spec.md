@@ -38,7 +38,7 @@
 ### W25 — Grading (US5.2, US5.3; BR15.2, BR15.3, AC5.2.2, AC5.3.1)
 
 1. U7 dispatches `breeding.grade { cohortId, count }` when panels show ageDays ≥ juvenileDays.
-2. Reject INVALID_SETTING (eggs / not ready), INVALID_QUANTITY, TANK_FULL (batch formula: bioload + N × (adultSizeCm − 0.05) ≤ volumeL — only the leaving share converts to adult load; all-or-nothing per call).
+2. Reject INVALID_SETTING (eggs / not ready), INVALID_QUANTITY, TANK_FULL (batch formula: bioload + N × (adultSizeCm × 1.2 − 0.05) ≤ volumeL — each graded fry lands at newborn activity 1.2 (SPAWN_SATIETY 80 → activityOf 1.2), only the leaving share converts; all-or-nothing per call; never an under-estimate of the true post-grade load while newborns stay in the ≥70 satiety band). The guard reads the last water-phase cached tank.bioload (recomputed once per tick, never mid-command).
 3. Create Fish per U3 field rules (sex 50/50, parents, inheritGenome each, stunted from the BR15.2 test); emit `cohortGraded { cohortId, count }`; remainder stays; bus bumps version once.
 
 ## State machines
@@ -65,14 +65,14 @@
 ## Selectors (U5-owned)
 
 - `pairsInTank(state)`, `cohortsInTank(state)`, `breedingReadiness(state, pairId)` — condition breakdown for the U7 breeding screen.
-- `gradePreview(state, cohortId, count)` — projected capacity (same batch formula: bioload + N × (adultSizeCm − 0.05)) + stunting outcome without mutating (U7 confirm screen).
+- `gradePreview(state, cohortId, count)` — projected capacity (same batch formula: bioload + N × (adultSizeCm × 1.2 − 0.05)) + stunting outcome without mutating (U7 confirm screen).
 
 ## Coordination notes
 
 - **U1 (data completion, additive)**: per breeding species — `clutch: [min, max]`, `gestationDays`, `hatchDays`, `cycleDays`, `speciesBaseRate` (≈0.3 default), breeding `tempC` range (reuse tempRangeC); only the three MVP archetypes breed (others reject at pairing with INVALID_SETTING — archetype check in BR14.1's eligibility). Plus `GameState.pairs: Record<PairId, BreedingPair>` with save/load round-trip (pre-U5 saves load pairs = {}); lands with U5's implementation.
 - **U3 (data completion, additive)**: `Fish.stunted: boolean` (false default; spawnFish sets false) + growth-formula factor × (stunted ? 0.8 : 1) in BR10.1/W12; graded Fish otherwise follow BR11.1 field rules with parents set.
 - **U4**: feedFry eaten rule pinned here — eaten = min(portions, ceil(cohort.count / 10)) per feed (10 fry per portion); amendment to U4 BR13.3/W19. Remainder is leftover → waste as usual.
-- **U2**: graded batches call `projectedBioload` with adultSizeCm (conservative — juveniles count full; documented over-estimate, never an under-estimate).
+- **U2**: graded batches call `projectedBioload` with adultSizeCm × newborn activity 1.2 (conservative — newborns arrive well-fed at satiety 80; documented over-estimate, never an under-estimate).
 - **U6**: maps `breedingStarted`/`fryHatched`/`cohortGraded` → info; price formula reads genomeQuality (unaffected by stunting — size factor carries it).
 
 ```mermaid

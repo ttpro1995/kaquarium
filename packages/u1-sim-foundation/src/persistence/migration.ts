@@ -2,7 +2,7 @@
 // Pure function: v1 state in, v2 state out. One owner for all absent-field
 // filling (Tank shape, Fish.stunted, feeding section, pairs, commerce
 // fields). Refusals throw; the C6 pipeline maps them to MIGRATION_FAILED.
-import { tierVolumeL, type WaterQualityBand } from '../types.js';
+import { starterFoodStack, tierVolumeL, type WaterQualityBand } from '../types.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -52,9 +52,10 @@ export function migrateV1ToV2(input: unknown): unknown {
   const state = input as Record<string, unknown>;
   if (!isRecord(state.tank)) throw new Error('migrateV1ToV2: state.tank must be an object');
   const tank = state.tank as Record<string, unknown>;
-  if (!isInt(tank.tier)) throw new Error('migrateV1ToV2: tank.tier must be an integer');
-  const tier = tank.tier as number;
-  // Throws on unknown tiers: a pre-tier save that is not tier 1-3 is refused, not guessed.
+  // Unknown tiers default to 1 with the paired tier-1 volume (never refused:
+  // a pre-tier save outside 1-3 still loads as a starter tank).
+  const rawTier = tank.tier;
+  const tier = rawTier === 1 || rawTier === 2 || rawTier === 3 ? rawTier : 1;
   const volumeL = tierVolumeL(tier);
 
   const oldWater = isRecord(tank.water) ? (tank.water as Record<string, unknown>) : {};
@@ -65,12 +66,19 @@ export function migrateV1ToV2(input: unknown): unknown {
   );
   const nitrate = 0; // a new cycle starts unconverted; ph is dropped (deferred post-MVP)
 
-  const fish = isRecord(state.fish) ? (state.fish as Record<string, unknown>) : {};
-  const fishIds = Object.keys(fish);
-  for (const id of fishIds) {
-    const entry = fish[id];
-    if (!isRecord(entry)) continue;
-    if (typeof entry.stunted !== 'boolean') entry.stunted = false;
+  // Pure: every container below is rebuilt and every record entry is
+  // cloned before defaults are filled, so the input payload is untouched.
+  const fishIn = isRecord(state.fish) ? (state.fish as Record<string, unknown>) : {};
+  const fish: Record<string, unknown> = {};
+  for (const id of Object.keys(fishIn)) {
+    const entry = fishIn[id];
+    if (!isRecord(entry)) {
+      fish[id] = entry;
+      continue;
+    }
+    const next = { ...entry };
+    if (typeof next.stunted !== 'boolean') next.stunted = false;
+    fish[id] = next;
   }
 
   const gameDay =
@@ -78,68 +86,100 @@ export function migrateV1ToV2(input: unknown): unknown {
       ? ((state.clock as Record<string, unknown>).gameDay as number)
       : 1;
 
-  const food = isRecord(state.food) ? (state.food as Record<string, unknown>) : {};
-  for (const id of Object.keys(food)) {
-    const entry = food[id];
-    if (!isRecord(entry)) continue;
-    if (!isInt(entry.acquiredDay)) entry.acquiredDay = gameDay;
-    if (entry.target !== 'fish' && entry.target !== 'fry') entry.target = defaultFoodTarget(entry.kind);
-  }
-
-  const cohorts = isRecord(state.cohorts) ? (state.cohorts as Record<string, unknown>) : {};
-  for (const id of Object.keys(cohorts)) {
-    const entry = cohorts[id];
-    if (!isRecord(entry)) continue;
-    if (!isInt(entry.firstFoodDays)) entry.firstFoodDays = 0;
-    if (!isInt(entry.lastFryFedDay)) entry.lastFryFedDay = 0;
-    if (entry.stage !== 'eggs' && entry.stage !== 'fry') entry.stage = 'fry';
-  }
-
-  const market = isRecord(state.market) ? (state.market as Record<string, unknown>) : {};
-  for (const id of Object.keys(market)) {
-    const entry = market[id];
-    if (!isRecord(entry)) continue;
-    if (!isInt(entry.lastTrendDay)) entry.lastTrendDay = Math.max(1, gameDay);
-  }
-
-  const orders = Array.isArray(state.orders) ? (state.orders as unknown[]) : [];
-  for (const order of orders) {
-    if (!isRecord(order)) continue;
-    const deadline = (order as Record<string, unknown>).deadline;
-    const deadlineDay =
-      isInt(deadline) && (deadline as number) >= gameDay ? (deadline as number) : gameDay + 3;
-    (order as Record<string, unknown>).deadlineDay = deadlineDay;
-    delete (order as Record<string, unknown>).deadline;
-    if (!isInt((order as Record<string, unknown>).minHealth)) {
-      (order as Record<string, unknown>).minHealth = (order as Record<string, unknown>).minQuality;
+  const foodIn = isRecord(state.food) ? (state.food as Record<string, unknown>) : {};
+  const food: Record<string, unknown> = {};
+  for (const id of Object.keys(foodIn)) {
+    const entry = foodIn[id];
+    if (!isRecord(entry)) {
+      food[id] = entry;
+      continue;
     }
-    delete (order as Record<string, unknown>).minQuality;
-    if (typeof (order as Record<string, unknown>).customer !== 'string') {
-      (order as Record<string, unknown>).customer = 'hobbyist';
+    const next = { ...entry };
+    if (!isInt(next.acquiredDay)) next.acquiredDay = gameDay;
+    if (next.target !== 'fish' && next.target !== 'fry') next.target = defaultFoodTarget(next.kind);
+    food[id] = next;
+  }
+  // BR12.4 backfill: a migrated cupboard that is empty grants the same
+  // bootstrap a new save gets, dated to the migrated day. Stocked
+  // cupboards keep exactly what the player had (no starter injected).
+  if (Object.keys(food).length === 0) {
+    const starter = starterFoodStack(gameDay);
+    food[starter.id] = starter;
+  }
+
+  const cohortsIn = isRecord(state.cohorts) ? (state.cohorts as Record<string, unknown>) : {};
+  const cohorts: Record<string, unknown> = {};
+  for (const id of Object.keys(cohortsIn)) {
+    const entry = cohortsIn[id];
+    if (!isRecord(entry)) {
+      cohorts[id] = entry;
+      continue;
     }
-    if (typeof (order as Record<string, unknown>).multiplier !== 'number') {
-      (order as Record<string, unknown>).multiplier = 1.2;
+    const next = { ...entry };
+    if (!isInt(next.firstFoodDays)) next.firstFoodDays = 0;
+    if (!isInt(next.lastFryFedDay)) next.lastFryFedDay = 0;
+    if (next.stage !== 'eggs' && next.stage !== 'fry') next.stage = 'fry';
+    cohorts[id] = next;
+  }
+
+  const marketIn = isRecord(state.market) ? (state.market as Record<string, unknown>) : {};
+  const market: Record<string, unknown> = {};
+  for (const id of Object.keys(marketIn)) {
+    const entry = marketIn[id];
+    if (!isRecord(entry)) {
+      market[id] = entry;
+      continue;
+    }
+    const next = { ...entry };
+    if (!isInt(next.lastTrendDay)) next.lastTrendDay = Math.max(1, gameDay);
+    market[id] = next;
+  }
+
+  const ordersIn = Array.isArray(state.orders) ? (state.orders as unknown[]) : [];
+  const orders: unknown[] = [];
+  for (const order of ordersIn) {
+    if (!isRecord(order)) {
+      orders.push(order);
+      continue;
+    }
+    const next = { ...order };
+    // Preserve an existing valid deadlineDay; only derive from the legacy
+    // deadline when it is present, else gameDay + 3.
+    if (!isInt(next.deadlineDay)) {
+      const legacy = next.deadline;
+      next.deadlineDay = isInt(legacy) && (legacy as number) >= gameDay ? (legacy as number) : gameDay + 3;
+    }
+    delete next.deadline;
+    if (!isInt(next.minHealth)) {
+      // Missing minHealth defaults to 0 (non-blocking: never newly gates an
+      // existing order); a legacy minQuality carries over when present.
+      next.minHealth = isInt(next.minQuality) ? (next.minQuality as number) : 0;
+    }
+    delete next.minQuality;
+    if (typeof next.customer !== 'string') {
+      next.customer = 'hobbyist';
+    }
+    if (typeof next.multiplier !== 'number') {
+      next.multiplier = 1.2;
     }
     // No catalogue access in the pure migration: 0 = no size gate, so no
     // existing order is newly blocked. U6 fills real sizes for new orders.
-    if (typeof (order as Record<string, unknown>).minSizeCm !== 'number') {
-      (order as Record<string, unknown>).minSizeCm = 0;
+    if (typeof next.minSizeCm !== 'number') {
+      next.minSizeCm = 0;
     }
+    orders.push(next);
   }
 
-  const notifications = Array.isArray(state.notifications) ? (state.notifications as unknown[]) : [];
-  for (const note of notifications) {
-    if (!isRecord(note)) continue;
-    if (typeof (note as Record<string, unknown>).subjectId !== 'string') {
-      (note as Record<string, unknown>).subjectId = '';
-    }
-  }
+  // subjectId is optional: an absent one stays absent (never filled with '').
+  // No entry is mutated, so a shallow array copy keeps the function pure.
+  const notifications = Array.isArray(state.notifications) ? [...(state.notifications as unknown[])] : [];
 
   const bioload = num(tank.bioload, 0);
   return {
     ...state,
     tank: {
       ...tank,
+      tier,
       volumeL,
       water: { waste, nitrate, tempC },
       equipment: {
@@ -152,7 +192,7 @@ export function migrateV1ToV2(input: unknown): unknown {
       biofilterMaturity: num(tank.biofilterMaturity, 0),
       prevQualityBand: deriveQualityBand(waste, nitrate),
       overcrowdLatch: deriveOvercrowdLatch(bioload, volumeL),
-      tempPoorLatch: deriveTempPoorLatch(tempC, fishIds.length),
+      tempPoorLatch: deriveTempPoorLatch(tempC, Object.keys(fish).length),
     },
     fish,
     food,

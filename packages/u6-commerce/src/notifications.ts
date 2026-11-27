@@ -17,6 +17,40 @@ import './events.js';
 export const MAX_NOTIFICATIONS = 100;
 
 let notificationSeq = 0;
+let lastSyncedQueue: Notification[] | null = null;
+let lastSyncedLength = 0;
+
+/**
+ * Reload-safe sequence (review): the U1 NotificationMapper contract hands
+ * the mapper only (event, species) — no ctx/state/rng — so ids cannot
+ * consume sim rng here (and Math.random is banned in sim code by NFR3.2).
+ * A bare module counter would reset on reload and collide with the
+ * persisted queue, so every U6 entry point (both systems, all five
+ * commands — and U7's save-load path) calls this before it can produce a
+ * drain, lifting the counter above every persisted `notif-` id.
+ *
+ * NFR1.1: steady-state ticks skip the scan. New above-counter ids can
+ * only arrive via load (fresh queue array) or queue growth (only the tail
+ * is new — removals never introduce ids), so a known array at an equal or
+ * smaller length needs no work and a grown array scans only its tail.
+ */
+export function syncNotificationSeq(state: GameState): void {
+  const queue = state.notifications;
+  if (queue === lastSyncedQueue && queue.length <= lastSyncedLength) return;
+  const start = queue === lastSyncedQueue ? lastSyncedLength : 0;
+  let max = notificationSeq;
+  for (let index = start; index < queue.length; index++) {
+    const notification = queue[index];
+    if (notification === undefined) continue;
+    const match = /^notif-([0-9a-f]+)$/.exec(notification.id);
+    if (match === null) continue;
+    const value = parseInt(match[1] as string, 16);
+    if (Number.isFinite(value) && value > max) max = value;
+  }
+  notificationSeq = max;
+  lastSyncedQueue = queue;
+  lastSyncedLength = queue.length;
+}
 
 function makeNotification(
   priority: NotificationPriority,

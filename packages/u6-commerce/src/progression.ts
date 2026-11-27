@@ -2,7 +2,10 @@
 // Three XP sources (sale/5, hatch +10, fulfil reward/4); thresholds L2 200
 // / L3 600 cascade in one award with one levelUp per level ascending.
 // XP never decreases; unlocks accumulate and are never removed.
+// Unlock ids are U2's canonical tables (U2 gates purchases on them);
+// the per-level award mapping stays here (BR18.2).
 import type { GameState } from '@aquarium/u1-sim-foundation/state';
+import { EQUIPMENT_UNLOCKS, TIER_UNLOCKS } from '@aquarium/u2-tank-water';
 
 /** Sale XP divisor: floor(price/5) per fish (BR18.1). */
 export const SALE_XP_DIVISOR = 5;
@@ -19,10 +22,20 @@ export const LEVEL_XP: Record<2 | 3, number> = { 2: 200, 3: 600 };
 /** Highest playable level. */
 export const MAX_LEVEL = 3;
 
-/** Level unlock ids, appended on crossing (BR18.2). */
+/** Level unlock ids, appended on crossing (BR18.2). Built from U2's canonical tables: every id U2 gates on is awarded here (see unlocks-crosscheck.test.ts). */
 export const UNLOCKS: Record<2 | 3, readonly string[]> = {
-  2: ['tier.2', 'equipment.filter2', 'equipment.heater', 'equipment.autofeeder'],
-  3: ['tier.3', 'equipment.filter3', 'equipment.light2', 'equipment.light3'],
+  2: [
+    TIER_UNLOCKS[2] as string,
+    EQUIPMENT_UNLOCKS.filter[2] as string,
+    EQUIPMENT_UNLOCKS.heater[1] as string,
+    EQUIPMENT_UNLOCKS.autoFeeder[1] as string,
+  ],
+  3: [
+    TIER_UNLOCKS[3] as string,
+    EQUIPMENT_UNLOCKS.filter[3] as string,
+    EQUIPMENT_UNLOCKS.light[2] as string,
+    EQUIPMENT_UNLOCKS.light[3] as string,
+  ],
 };
 
 /** Sale XP for one priced fish. */

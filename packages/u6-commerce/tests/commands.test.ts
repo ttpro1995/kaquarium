@@ -143,6 +143,7 @@ describe('commerce.sellFish / sellBulk (US6.1)', () => {
     const { kernel } = setup();
     kernel.store.state.fish.a = adultFish('a');
     kernel.store.state.fish.sick = adultFish('sick', { health: 20 });
+    kernel.store.state.fish.ghost = adultFish('ghost', { speciesId: 'extinct' });
     const money = kernel.store.state.money;
     const missing = kernel.dispatch('commerce.sellFish', { fishId: 'nope' });
     expect(missing.ok).toBe(false);
@@ -150,6 +151,12 @@ describe('commerce.sellFish / sellBulk (US6.1)', () => {
     expect(sick.ok).toBe(false);
     if (sick.ok) throw new Error('unreachable');
     expect(sick.error.code).toBe('FISH_UNSELLABLE');
+    // Catalogue-missing species rejects UNKNOWN_ENTITY (never throws), mutating nothing.
+    const ghost = kernel.dispatch('commerce.sellFish', { fishId: 'ghost' });
+    expect(ghost.ok).toBe(false);
+    if (ghost.ok) throw new Error('unreachable');
+    expect(ghost.error.code).toBe('UNKNOWN_ENTITY');
+    expect(kernel.store.state.fish.ghost).toBeDefined();
     expect(kernel.store.state.money).toBe(money);
     expect(kernel.store.state.fish.sick).toBeDefined();
   });
@@ -217,5 +224,17 @@ describe('orders.fulfil / notifications.dismiss (US7.1/US12.1)', () => {
     expect(buyableSpecies(kernel.store.state, [species, guppy({ id: 'big', tier: 3 })])).toEqual([species]);
     expect(levelProgress(kernel.store.state)).toEqual({ level: 1, xp: 0, xpToNext: 200, unlocks: [] });
     expect(notificationQueue(kernel.store.state)).toHaveLength(0);
+    // bulkPreview mirrors sellBulk exactly: sick entries skip, sequential
+    // x0.97 totals match the real sale.
+    kernel.store.state.fish.b = adultFish('b');
+    kernel.store.state.fish.sick = adultFish('sick', { health: 20 });
+    const mirror = bulkPreview(kernel.store.state, ['a', 'b', 'sick', 'a'], () => species);
+    expect(mirror.sold).toBe(2);
+    expect(mirror.skipped).toEqual(expect.arrayContaining(['sick']));
+    expect(mirror.items.find((i) => i.fishId === 'sick')).toEqual({ fishId: 'sick', price: null, skipped: true });
+    const bulked = kernel.dispatch('commerce.sellBulk', { fishIds: ['a', 'b', 'sick'] });
+    expect(bulked.ok).toBe(true);
+    if (!bulked.ok) return;
+    expect(bulked.value).toEqual({ sold: mirror.sold, skipped: 1, total: mirror.total });
   });
 });

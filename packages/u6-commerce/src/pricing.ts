@@ -78,6 +78,13 @@ function asGenome(fish: Fish): Genome {
  * Full eight-factor price for one fish (W27, BR16.1). Pure; undefined when
  * the species entry is missing so callers reject UNKNOWN_ENTITY instead
  * of pricing against a guessed base.
+ *
+ * Deliberate duplication (review): fastPriceForFish (commerce.ts) and the
+ * inline loop in runCommerceTick repeat this arithmetic for the NFR1.1
+ * hot loop instead of calling it. All three copies must agree
+ * factor-for-factor — enforced by tests/pricing.test.ts
+ * 'tick-refreshed Fish.value equals the canonical formula'. Change one,
+ * change all three, then run the sweep.
  */
 export function priceForFish(
   fish: Fish,

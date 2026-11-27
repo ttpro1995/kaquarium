@@ -5,6 +5,7 @@
 // is U6's canonical shape, reused by U2/U4 under the C2 purchase-path
 // exception (identical shape in every declaration).
 import type { FishId, Species, TankId } from '@aquarium/u1-sim-foundation/state';
+import type { MoneyChangedPayload } from '@aquarium/u1-sim-foundation';
 
 declare module '@aquarium/u1-sim-foundation/events' {
   interface SimEventMap {
@@ -21,8 +22,10 @@ declare module '@aquarium/u1-sim-foundation/events' {
     /**
      * Canonical money shape (C2 exception): validate-first,
      * deduct-or-reject atomic, one per accepted purchase-path call.
+     * Single declaration lives in U1 (MoneyChangedPayload); U2/U4 reuse
+     * this same type so the three declarations cannot drift apart.
      */
-    moneyChanged: { delta: number; balance: number };
+    moneyChanged: MoneyChangedPayload;
   }
 }
 

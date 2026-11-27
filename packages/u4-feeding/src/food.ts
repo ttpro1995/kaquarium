@@ -21,7 +21,7 @@ export const FOOD_CATALOG: Record<FoodKind, FoodCatalogueRow> = {
   liveFirst: { pricePerUnit: 6, quality: 1.0, shelfLifeDays: 7, target: 'fry' },
 };
 
-/** Waste added per uneaten portion (BR13.2, U2 WASTE_PER_PORTION). */
+/** Waste added per uneaten portion (BR13.2, U4-owned; consumed via feedResult). */
 export const WASTE_PER_PORTION = 2.0;
 
 /** Satiety restored per portion at quality 1 (BR13.1). */

@@ -101,6 +101,23 @@ U1 defines the type. The named unit owns the behaviour and may add fields the ta
 
 There is no `Stats` entity in the MVP. No requirement asks for lifetime aggregates; the "while you were away" summary is computed from the catch-up event batch (C4), not from stored totals. If a stats screen is specified later it arrives as an additive field.
 
+### U2-gated progression unlock ids (U6 awards, U2 gates)
+
+U6 progression (BR18.2) is the only writer that appends to `PlayerProgression.unlocks`; U2 is the only consumer that gates on them. The canonical id strings live in U2's `EQUIPMENT_UNLOCKS` / `TIER_UNLOCKS` (`packages/u2-tank-water/src/commands.ts`), which U6 progression consumes to build its per-level awards; the `u6-commerce` unlocks-crosscheck test asserts every gated id is awarded.
+
+| Unlock id | Awarded at | Gated purchase |
+|---|---|---|
+| `tier.2` | level 2 | `tank.upgradeTier { tier: 2 }` |
+| `equipment.filter2` | level 2 | `tank.buyEquipment { kind: 'filter', level: 2 }` |
+| `equipment.heater` | level 2 | `tank.buyEquipment { kind: 'heater', level: 1 }` |
+| `equipment.autofeeder` | level 2 | `tank.buyEquipment { kind: 'autoFeeder', level: 1 }` |
+| `tier.3` | level 3 | `tank.upgradeTier { tier: 3 }` |
+| `equipment.filter3` | level 3 | `tank.buyEquipment { kind: 'filter', level: 3 }` |
+| `equipment.light2` | level 3 | `tank.buyEquipment { kind: 'light', level: 2 }` |
+| `equipment.light3` | level 3 | `tank.buyEquipment { kind: 'light', level: 3 }` |
+
+The `equipmentUpgraded` event format is `"<kind>:<level>"` (e.g. `filter:2`, `heater:1`), emitted by `tank.buyEquipment` on success (see C4).
+
 ## C2 — System registry, tick context, and the tick pipeline
 
 A unit exports `register(registry: Registry): void`. It registers its systems, its command handlers, and — for U6 only — the notification mapper. U1 sorts systems by the declared phase, never by registration sequence, so the order is identical for live play, autosave reload, and offline catch-up.
@@ -155,7 +172,7 @@ shared-schema:
     - A duplicate system id, command type or notification mapper is a development-time error.
     - Only U7's composition root calls register(); its call order imposes no simulation order.
     - No Math.random, Date.now or other ambient nondeterminism inside a system; all randomness goes through ctx.rng.
-    - Exception (U2 BR9.3, U3 BR11.3, U4 BR13.3): U4's feeding path (feed command and auto-feeder system) may add waste to tank.water.waste and write Fish.satiety as the feeding transaction, U4's feedFry path may write the cohort's firstFoodDays/lastFryFedDay, and U6's commerce system may refresh the Fish.value cache from its price formula each commerce tick. U5 grading exception (U5 BR15.3): U5's breeding.grade handler may create Fish records via U3's spawnFish/inheritGenome (parents set, nursery-adjusted capacity pre-checked) — creation-via-U3-rules, mirroring U6's authorised buyFish trio emission. Purchase-path exception (U6 BR16.5): U2's tank.upgradeTier, tank.changeWater (volume fee), and food-purchase-adjacent handlers plus U4's food-purchase handler may deduct the U6-owned money scalar and emit moneyChanged on the U6 shape — validate-first, deduct-or-reject atomic, one moneyChanged per accepted call. These are the only allowlisted cross-entity writes; ownership checks distinguish them from a bug.
+    - Exception (U2 BR9.3, U3 BR11.3, U4 BR13.3): U4's feeding path (feed command and auto-feeder system) may add waste to tank.water.waste and write Fish.satiety as the feeding transaction, U4's feedFry path may write the cohort's firstFoodDays/lastFryFedDay, and U6's commerce system may refresh the Fish.value cache from its price formula each commerce tick. U5 grading exception (U5 BR15.3): U5's breeding.grade handler may create Fish records via U3's spawnFish/inheritGenome (parents set, nursery-adjusted capacity pre-checked) — creation-via-U3-rules, mirroring U6's authorised buyFish trio emission. Purchase-path exception (U6 BR16.5): U2's tank.upgradeTier, tank.waterChange (volume fee), and food-purchase-adjacent handlers plus U4's food-purchase handler may deduct the U6-owned money scalar and emit moneyChanged on the U6 shape — validate-first, deduct-or-reject atomic, one moneyChanged per accepted call. These are the only allowlisted cross-entity writes; ownership checks distinguish them from a bug.
   tick:
     - One tick is one game hour; ticks are discrete and never partial.
     - Live play queues ticks from elapsed real time at pause / x1 / x2 / x4. Live ticks are capped at 4 per rendered frame (x4 worst case; U2 NFR1.1 frame contract): excess ticks accumulate in the queue, never dropped (dropping would break determinism); sustained backlog surfaces through the loading state, and the 8 ms/frame total sim budget applies per frame regardless. Scheduler pacing: x1 advances 1 game-hour per real second; x2/x4 scale linearly (U7 NFR1.2 scheduler contract).
@@ -311,7 +328,7 @@ The MVP target catalogue — every variant is `{ kind }` plus the fields below, 
 | `overfed` | U4 | `wasteDelta: number` |
 | `foodOut` | U4 | `foodId: FoodItemId` |
 | `waterChanged` | U2 | `wasteDelta: number` |
-| `equipmentUpgraded` | U2 | `equipment: string` |
+| `equipmentUpgraded` | U2 | `equipment: string` — `"<kind>:<level>"` (e.g. `filter:2`, `heater:1`) |
 | `fishSick` | U2 | `fishId: FishId`, `cause: 'waterQuality' \| 'temperature'` |
 | `breedingStarted` | U5 | `fishIds: [FishId, FishId]` |
 | `fryHatched` | U5 | `cohortId: CohortId`, `count: number` |

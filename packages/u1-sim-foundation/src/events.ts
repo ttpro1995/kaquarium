@@ -16,6 +16,17 @@ export interface SimEventMap {
   };
 }
 
+/**
+ * Canonical C2 purchase-path money shape (U6-owned): validate-first,
+ * deduct-or-reject atomic, one moneyChanged per accepted call.
+ * Declared once here so U2, U4, and U6 reuse it identically by
+ * construction; the runtime key-set pin lives in the U4 suite.
+ */
+export type MoneyChangedPayload = {
+  delta: number;
+  balance: number;
+};
+
 export type KnownSimEvent = {
   [K in keyof SimEventMap]: { kind: K } & SimEventMap[K];
 }[keyof SimEventMap];
@@ -26,6 +37,12 @@ export interface BaseSimEvent {
   [key: string]: unknown;
 }
 
+// Long-term shape (review note): keep this conditional guard. It lets U1's
+// own suites (catch-up collector, drain tests) read through BaseSimEvent for
+// foreign kinds owned by units not yet in the program, while the full program
+// regains the exact KnownSimEvent union. If the guard is ever removed, every
+// foreign-kind read must go through one standardised helper (the `foreign()`
+// test double pattern used in U1 src/tests) rather than ad-hoc casts.
 export type SimEvent = keyof SimEventMap extends never ? BaseSimEvent : KnownSimEvent;
 
 export type NotificationMapper = (event: SimEvent, species: SpeciesCatalog) => Notification | null;

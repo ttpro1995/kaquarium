@@ -70,6 +70,13 @@ link for the new package, via `npm install`). No U1/U2 source changes.
 - Unknown-species fallbacks (adultSize → body size, maturity 90,
   lifespan 365) mirror U2's tolerant reads so foreign fixtures never
   crash the tick.
+- `nextStage` advances at most one stage per tick by design (review-01
+  Minor): a pre-aged juvenile whose `ageDays` already clears the senior
+  line — reachable only via a hand-built or migrated save, since spawn
+  sets `ageDays` to 0 and live ticks accrue 1/24 — converges over two
+  ticks (`fishMatured { adult }` then `{ senior }`). Safe in live play,
+  which can never produce the state; no behaviour change, documented so
+  a later U5/U6 reader does not treat the double event as a bug.
 
 ## Test report
 

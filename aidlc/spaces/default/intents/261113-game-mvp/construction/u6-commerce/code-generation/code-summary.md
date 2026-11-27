@@ -46,9 +46,11 @@ Created (`packages/u6-commerce/`):
   levelUp per level ascending; XP never decreases).
 - `src/commerce.ts` — registered `u6.commerce` + `u6.notify` systems
   (commerce/notify phases, W29–W35). Commerce: day-boundary order
-  recovery → costs → expiry/prune → hatch-XP + checks → upkeep →
+  recovery → costs (emits moneyChanged for the deduction; U7 reads the
+  balance from state.money) → expiry/prune → hatch-XP + checks → upkeep →
   value-cache refresh; every tick sights hatch events (C4 exception) and
-  refreshes the display-only cache. Hot loop is fully inline (plain-object
+  refreshes the display-only cache (unknown-species entries fall back to
+  0, never stale). Hot loop is fully inline (plain-object
   per-species cache, memoized genome factor per Fish via WeakMap —
   genomes are immutable after spawn) for the NFR1.1 budget; the canonical
   `priceForFish` stays the readable form and the suite asserts the tick
@@ -60,11 +62,13 @@ Created (`packages/u6-commerce/`):
   > NOT_AVAILABLE (tier/archetype) > TANK_FULL (projectedBioload) >
   INSUFFICIENT_FUNDS; spawnFish → deduct → trio fishBought + fishSpawned
   + moneyChanged), `commerce.sellFish`/`commerce.sellBulk` (dedupe, strict
-  unknown, skip sick, empty-eligible FISH_UNSELLABLE; remove/pay/saturate/
+  unknown, catalogue-missing species → UNKNOWN_ENTITY without throwing,
+  skip sick, empty-eligible FISH_UNSELLABLE; remove/pay/saturate/
   XP per fish + one moneyChanged), `orders.fulfil` (precedence
-  UNKNOWN_ENTITY > FISH_UNSELLABLE > INVALID_SETTING; premium, no
-  saturation, no fishSold, rep +1, XP reward/4), `notifications.dismiss`
-  (UNKNOWN_ENTITY else remove). Rejections mutate nothing by construction.
+  UNKNOWN_ENTITY > FISH_UNSELLABLE > INVALID_SETTING incl. past-deadline
+  (grace runs to end of deadlineDay, same boundary as midnight expiry);
+  premium, no saturation, no fishSold, rep +1, XP reward/4),
+  `notifications.dismiss` (UNKNOWN_ENTITY else remove). Rejections mutate nothing by construction.
 - `src/notifications.ts` — BR19.2/BR19.3 mapper + cap (W35):
   fishDied → critical; tankOvercrowded/orderExpired/foodOut → warn;
   economy/progress events → info; fishSpawned/fishSick/moneyChanged →
@@ -74,8 +78,12 @@ Created (`packages/u6-commerce/`):
   only delivery path, so exactly-once still holds by C4.
   `enforceQueueCap` (drop oldest info, then warn; criticals never
   auto-drop, so an all-critical queue may transiently exceed 100).
-- `src/selectors.ts` — `sellPrice`, `bulkPreview` (skipped
-  flagged), `orderRewardPreview`, `buyableSpecies` (tier + egg-layer
+  `syncNotificationSeq` lifts the mapper id counter above the persisted
+  queue at every U6 entry point (both systems, all five commands), so
+  post-reload ids never collide; steady-state ticks skip the scan
+  (NFR1.1).
+- `src/selectors.ts` — `sellPrice`, `bulkPreview` (exact sellBulk mirror:
+  sick + unknown skipped, sequential ×0.97 totals equal), `orderRewardPreview`, `buyableSpecies` (tier + egg-layer
   gates), `levelProgress` (xpToNext derived), `notificationQueue`. Pure,
   never mutate.
 - `src/events.ts` — U6 SimEvent variants (fishBought, fishSold,
@@ -83,19 +91,26 @@ Created (`packages/u6-commerce/`):
 - `src/index.ts` — `register` (commerce + notify systems, five commands,
   single notification mapper); full re-export surface.
 
-## Tests (38)
+## Tests (40)
 
 - `tests/pricing.test.ts` (17): eight-factor bands, floor 1, gate 40,
   demand ×0.97/recovery/3-day trend, board params/deadlines, XP
   sources/thresholds/unlocks, electricity clamp, fulfil rep bonus,
-  tick-vs-canonical genome sweep.
-- `tests/commerce.test.ts` (10): atomic sell, bulk rules, fulfil
-  premium/precedence, expiry + cascade L1→L3, mapper table, sick-batch
+  tick-vs-canonical genome sweep (both fast paths agree; unknown-species
+  cache falls back to 0), midnight moneyChanged emission.
+- `tests/commerce.test.ts` (10): atomic sell, bulk rules (incl.
+  catalogue-missing atomic UNKNOWN_ENTITY), fulfil
+  precedence (incl. past-deadline INVALID_SETTING) + expiry + cascade L1→L3,
+  mapper table (incl. reload-safe id resync), sick-batch
   collapse, queue cap + dismiss.
 - `tests/commands.test.ts` (7): buy trio + four gates, sell
-  rejections, bulk atomicity, fulfil mismatch, preview purity.
+  rejections (incl. catalogue-missing UNKNOWN_ENTITY, never throws),
+  bulk atomicity, fulfil mismatch, preview purity + bulkPreview/sellBulk
+  mirror (sick skipped, sequential totals equal).
 - `tests/integration.test.ts` (2): buy→sell→saturation→fulfil→level-up;
   catch-up away summary.
+- `tests/unlocks-crosscheck.test.ts` (2): U2-gated unlock ids ⊆ U6 awards;
+  equipmentUpgraded `<kind>:<level>` format.
 - `tests/benchmark.test.ts` (2): p95 0.037–0.095 ms ≤ 0.125 ms
   (full board, 100-notification queue); heap 0.00–0.05 KB/100 ticks.
 
@@ -103,9 +118,9 @@ Created (`packages/u6-commerce/`):
 
 - `npx tsc --noEmit` — clean.
 - `npx eslint packages/u6-commerce/src packages/u6-commerce/tests` — clean.
-- `npx vitest run packages/u6-commerce` — 38 passed.
+- `npx vitest run packages/u6-commerce` — 40 passed.
 - `npx vitest run --coverage packages/u6-commerce` — u6-commerce/src
-  89.76% lines (floor 80%); benchmark p95 ≤ 0.125 ms with coverage.
+  93.16% lines (floor 80%); benchmark p95 ≤ 0.125 ms with coverage.
 - Full `npx vitest run` — 33 files / 229 tests passed (incl. u6-commerce
   probe under parallel contention). Full-coverage run: u6-commerce green;
   the pre-existing u5-breeding probe flakes under full-suite coverage

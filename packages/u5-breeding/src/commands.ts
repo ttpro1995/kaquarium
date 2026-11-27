@@ -10,8 +10,8 @@ import {
   type CommandHandler,
 } from '@aquarium/u1-sim-foundation/commands';
 import type { Registry } from '@aquarium/u1-sim-foundation';
-import { COHORT_LOAD_PER_FRY } from '@aquarium/u2-tank-water';
-import { inheritGenome, spawnFish, type Genome, type SpawnedFish } from '@aquarium/u3-fish';
+import { activityOf, COHORT_LOAD_PER_FRY } from '@aquarium/u2-tank-water';
+import { inheritGenome, spawnFish, SPAWN_SATIETY, type Genome, type SpawnedFish } from '@aquarium/u3-fish';
 import { createPair, validatePairing } from './pairs.js';
 import { stuntedAtGrading } from './cohorts.js';
 import './events.js';
@@ -113,6 +113,9 @@ function isGenomeLike(value: unknown): value is Genome {
  * INVALID_SETTING (eggs / not ready) > INVALID_QUANTITY > TANK_FULL (batch
  * formula, all-or-nothing). Creates N Fish per U3's field rules with
  * parents set and the first-food stunt flag; the remainder stays.
+ * Guard reads the last water-phase cached tank.bioload (recomputed once
+ * per tick in the water phase, never mid-command), so back-to-back grades
+ * in the same tick share the same cached base — never a live recompute.
  */
 export const grade: CommandHandler<GradePayload, GradeResult> = (
   state,
@@ -135,9 +138,15 @@ export const grade: CommandHandler<GradePayload, GradeResult> = (
   if (typeof count !== 'number' || !Number.isInteger(count) || count < 1 || count > cohort.count) {
     return { ok: false, error: { code: 'INVALID_QUANTITY', message: 'Grade count must be within the cohort.' } };
   }
-  // Batch formula (BR15.3): only the leaving share converts to full adult
+  // Batch formula (BR15.3): only the leaving share converts to newborn
   // load; the remainder keeps its nursery 0.05 each. All-or-nothing.
-  const projectedLoad = state.tank.bioload + count * (species.adultSizeCm - COHORT_LOAD_PER_FRY);
+  // Newborns arrive at SPAWN_SATIETY (80 → activity 1.2), so each graded
+  // fry lands at adultSizeCm × 1.2 — the guard projects that newborn
+  // activity, never the 1.0-activity adult size. Never an under-estimate:
+  // the true post-grade load (recomputed next water phase) is always ≤
+  // this projection while newborn satiety stays in the ≥70 band.
+  const projectedLoad =
+    state.tank.bioload + count * (species.adultSizeCm * activityOf(SPAWN_SATIETY) - COHORT_LOAD_PER_FRY);
   if (projectedLoad > state.tank.volumeL) {
     return { ok: false, error: { code: 'TANK_FULL', message: 'The tank cannot hold that many adults.' } };
   }

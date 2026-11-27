@@ -172,6 +172,9 @@ describe('auto-feeder schedule runs (BR13.4)', () => {
   function feederState() {
     const state = createInitialState(27);
     state.tank.equipment.autoFeeder.installed = true;
+    // Isolate the oldest-first pin: the BR12.4 starter ties old on
+    // acquiredDay, so it steps aside and old/new decide the order.
+    state.food = {};
     state.food.old = { ...flakesStack('old', 4, 1) };
     state.food.new = { ...flakesStack('new', 4, 3) };
     state.fish.hungry = makeFish('hungry', 10);
@@ -249,5 +252,78 @@ describe('expiry sweep (BR12.3)', () => {
     expect(events.filter((e) => e.kind === 'foodOut')).toHaveLength(1);
     expect(feedingSystem.id).toBe('u4.feeding');
     expect(feedingSystem.phase).toBe('feeding');
+  });
+});
+
+describe('single time authority (ctx.now)', () => {
+  it('derives today and nowHour from ctx.now even when the clock lags', () => {
+    const state = createInitialState(30);
+    state.tank.equipment.autoFeeder.installed = true;
+    state.food.old = { ...flakesStack('old', 4, 1) };
+    state.fish.hungry = makeFish('hungry', 10);
+    // Programmed at absolute hour 120 (day 5, hour 0), every 6 hours.
+    state.feeding.schedule = { foodKind: 'flakes', portions: 2, intervalHours: 6, lastRunHour: 120 };
+    // The stored clock lags a tick behind the dispatched context:
+    // absoluteHour(state) is 5*24+3 = 123 (not due: 123-120 < 6).
+    state.clock.gameDay = 5;
+    state.clock.gameHour = 3;
+    const events: SimEvent[] = [];
+    // ctx.now says day 5, hour 9 -> 129 (due: 129-120 >= 6).
+    const ctx: TickContext = {
+      state, tick: 1, now: { day: 5, hour: 9 },
+      rng: createRng(state.rngState), species: new MemoryCatalog([makeSpecies()]),
+      events, catchUp: false,
+    };
+    runFeedingTick(ctx);
+    expect(state.feeding.schedule?.lastRunHour).toBe(129);
+    expect(events.filter((e) => e.kind === 'fed')).toHaveLength(1);
+  });
+});
+
+describe('one fed per scheduled run (BR13.4)', () => {
+  it('emits a single fed with the total eaten across every stack drawn', () => {
+    const state = createInitialState(31);
+    state.tank.equipment.autoFeeder.installed = true;
+    // Isolate the multi-stack draw: the BR12.4 starter alone would cover
+    // all four portions, so it steps aside for this aggregation pin.
+    state.food = {};
+    state.food.old = { ...flakesStack('old', 1, 1) };
+    state.food.new = { ...flakesStack('new', 4, 3) };
+    state.fish.hungry = makeFish('hungry', 10);
+    // 4 portions: 1 from the oldest stack, 3 from the next.
+    state.feeding.schedule = { foodKind: 'flakes', portions: 4, intervalHours: 6, lastRunHour: 0 };
+    state.clock.gameDay = 1;
+    state.clock.gameHour = 8;
+    const events: SimEvent[] = [];
+    runFeedingTick(ctxFor(state, events, 8));
+    const fed = events.filter((e) => e.kind === 'fed');
+    expect(fed).toHaveLength(1);
+    // All four portions eaten (18 satiety each, one hungry fish).
+    expect(fed[0]).toEqual({ kind: 'fed', foodId: 'old', portion: 4 });
+    // The drained oldest stack still reports its own foodOut.
+    expect(events).toContainEqual({ kind: 'foodOut', foodId: 'old' });
+    expect(state.food.old).toBeUndefined();
+    expect(state.food.new?.qty).toBe(1);
+  });
+});
+
+describe('fry counters only count feeds that land (BR13.3)', () => {
+  it('leaves firstFoodDays and lastFryFedDay untouched when nothing is eaten', () => {
+    const state = createInitialState(32);
+    state.cohorts.c0 = {
+      id: 'c0', speciesId: 'guppy', tankId: 'tank-1', bornDay: 1, count: 0,
+      ageDays: 2, genomePool: {}, survivalFactor: 1, stage: 'fry' as const,
+      firstFoodDays: 0, lastFryFedDay: 0,
+    };
+    const events: SimEvent[] = [];
+    const stack = flakesStack('lf1', 9, 1);
+    // Live-first-shaped stack, zero fry: need is 0, so eaten is 0.
+    const fryStack = { ...stack, kind: 'liveFirst', target: 'fry' as const, shelfLifeDays: 7 };
+    const cohort = state.cohorts.c0;
+    if (!cohort) throw new Error('fixture missing');
+    const result = dispenseToFry(state, events, fryStack, cohort, 5, 4);
+    expect(result).toEqual({ eaten: 0, leftover: 5 });
+    expect(cohort.firstFoodDays).toBe(0);
+    expect(cohort.lastFryFedDay).toBe(0);
   });
 });

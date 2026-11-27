@@ -2,9 +2,10 @@
 // Failing first: src/food.ts and src/schedule.ts do not exist yet.
 import { describe, expect, it } from 'vitest';
 import { createKernel } from '@aquarium/u1-sim-foundation';
+import { START_DAY } from '@aquarium/u1-sim-foundation/state';
 import { register } from '../src/index.js';
 import { FOOD_CATALOG, isExpired, usableFoodStacks } from '../src/food.js';
-import { absoluteHour, emptySchedule } from '../src/schedule.js';
+import { absoluteHour, emptySchedule, validateScheduleInput } from '../src/schedule.js';
 
 function setup() {
   const kernel = createKernel(11);
@@ -45,7 +46,7 @@ describe('buyFood through the bus (BR12.2)', () => {
     const outcome = kernel.dispatch('feeding.buyFood', { kind: 'pizza', qty: 1 });
     expect(outcome).toMatchObject({ ok: false, error: { code: 'UNKNOWN_ENTITY' } });
     expect(kernel.store.state.money).toBe(100);
-    expect(Object.keys(kernel.store.state.food)).toHaveLength(0);
+    expect(Object.keys(kernel.store.state.food)).toEqual(['food-starter']);
     expect(kernel.store.version).toBe(version);
   });
 
@@ -65,7 +66,7 @@ describe('buyFood through the bus (BR12.2)', () => {
     const outcome = kernel.dispatch('feeding.buyFood', { kind: 'pellets', qty: 2 });
     expect(outcome).toMatchObject({ ok: false, error: { code: 'INSUFFICIENT_FUNDS' } });
     expect(kernel.store.state.money).toBe(5);
-    expect(Object.keys(kernel.store.state.food)).toHaveLength(0);
+    expect(Object.keys(kernel.store.state.food)).toEqual(['food-starter']);
     expect(kernel.store.version).toBe(version);
   });
 });
@@ -105,7 +106,8 @@ describe('expiry by game day (BR12.3)', () => {
       shelfLifeDays: 7, acquiredDay: 1, target: 'fry',
     };
     const usable = usableFoodStacks(kernel.store.state, 'flakes', 6);
-    expect(usable.map((s) => s.id)).toEqual(['older', 'newer']);
+    // The BR12.4 starter (acquiredDay 1) is the oldest of all.
+    expect(usable.map((s) => s.id)).toEqual(['food-starter', 'older', 'newer']);
   });
 });
 
@@ -116,5 +118,63 @@ describe('schedule state shape (BR13.4)', () => {
     expect(emptySchedule()).toBeNull();
     // day 1, hour 8 -> 1*24 + 8 = 32.
     expect(absoluteHour(kernel.store.state)).toBe(32);
+  });
+});
+
+describe('BR12.4 starter stack (U1 bootstrap, U4 spec)', () => {
+  it('lands one flakes stack of 10 with acquiredDay = START_DAY on every new save', () => {
+    const kernel = setup();
+    const state = kernel.store.state;
+    expect(Object.keys(state.food)).toEqual(['food-starter']);
+    expect(state.food['food-starter']).toMatchObject({
+      id: 'food-starter',
+      kind: 'flakes',
+      qty: 10,
+      acquiredDay: START_DAY,
+    });
+    expect(state.clock.gameDay).toBe(START_DAY);
+  });
+
+  it('mirrors the FOOD_CATALOG flakes row (quality, shelf life, target)', () => {
+    const kernel = setup();
+    const starter = kernel.store.state.food['food-starter'];
+    expect(starter).toBeDefined();
+    if (!starter) return;
+    expect(starter).toMatchObject({
+      quality: FOOD_CATALOG.flakes.quality,
+      shelfLifeDays: FOOD_CATALOG.flakes.shelfLifeDays,
+      target: FOOD_CATALOG.flakes.target,
+    });
+  });
+});
+
+describe('validateScheduleInput (BR13.4)', () => {
+  it('accepts a well-formed fish-target program', () => {
+    expect(validateScheduleInput({ foodKind: 'flakes', portions: 2, intervalHours: 6 })).toEqual({
+      ok: true,
+      value: { foodKind: 'flakes', portions: 2, intervalHours: 6 },
+    });
+  });
+
+  it('rejects fractional portions as INVALID_QUANTITY', () => {
+    expect(validateScheduleInput({ foodKind: 'flakes', portions: 1.5, intervalHours: 6 })).toEqual({
+      ok: false,
+      code: 'INVALID_QUANTITY',
+    });
+    expect(validateScheduleInput({ foodKind: 'flakes', portions: NaN, intervalHours: 6 })).toEqual({
+      ok: false,
+      code: 'INVALID_QUANTITY',
+    });
+  });
+
+  it('rejects fry food and unknown kinds as INVALID_SETTING', () => {
+    expect(validateScheduleInput({ foodKind: 'liveFirst', portions: 2, intervalHours: 6 })).toEqual({
+      ok: false,
+      code: 'INVALID_SETTING',
+    });
+    expect(validateScheduleInput({ foodKind: 'pizza', portions: 2, intervalHours: 6 })).toEqual({
+      ok: false,
+      code: 'INVALID_SETTING',
+    });
   });
 });

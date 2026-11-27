@@ -2,12 +2,13 @@
 // them to the open map by TypeScript module augmentation; handlers push
 // into ctx.events and the C4 drain delivers them exactly once.
 import type { FishId } from '@aquarium/u1-sim-foundation/state';
+import type { MoneyChangedPayload } from '@aquarium/u1-sim-foundation';
 
 declare module '@aquarium/u1-sim-foundation/events' {
   interface SimEventMap {
     /** W9 success; wasteDelta is the waste reduction, positive. */
     waterChanged: { wasteDelta: number };
-    /** W10 equipment success, e.g. "filter:2", "heater:1". */
+    /** W10 equipment success. Format is "<kind>:<level>" (e.g. "filter:2", "heater:1") — pinned in contract-summary C4. */
     equipmentUpgraded: { equipment: string };
     /** W10 tier success (new additive variant). */
     tierUpgraded: { tier: number };
@@ -19,8 +20,9 @@ declare module '@aquarium/u1-sim-foundation/events' {
      * U6-owned shape, reused by U2 under the C2 purchase-path exception
      * (validate-first, deduct-or-reject atomic, one moneyChanged per
      * accepted call). Declared here so U2 handlers emit it type-safely;
-     * U6's canonical declaration must use this identical shape.
+     * the payload type is U1's single MoneyChangedPayload shared by
+     * U2/U4/U6, so the three declarations cannot drift apart.
      */
-    moneyChanged: { delta: number; balance: number };
+    moneyChanged: MoneyChangedPayload;
   }
 }

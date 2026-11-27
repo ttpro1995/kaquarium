@@ -11,8 +11,7 @@ import {
   type CommandHandler,
 } from '@aquarium/u1-sim-foundation/commands';
 import type { Registry, SimEvent } from '@aquarium/u1-sim-foundation';
-import { createRng } from '@aquarium/u1-sim-foundation';
-import { FOOD_CATALOG, isExpired, isFoodKind, makeStack, nextFoodId } from './food.js';
+import { FOOD_CATALOG, isExpired, isFoodKind, makeStack, nextFoodId, WASTE_PER_PORTION } from './food.js';
 import {
   absoluteHour,
   makeSchedule,
@@ -97,7 +96,7 @@ function checkPortions(portions: unknown): CommandError | null {
 
 /** Shared accepted-feed result: waste is the raw leftover add (BR13.2). */
 function feedResult(result: { eaten: number; leftover: number }): FeedFishResult {
-  return { eaten: result.eaten, leftover: result.leftover, waste: result.leftover * 2.0 };
+  return { eaten: result.eaten, leftover: result.leftover, waste: result.leftover * WASTE_PER_PORTION };
 }
 /** Named-stack gate (BR12.3, BR13.1): missing, dry, or expired rejects. */
 function checkStack(state: GameState, foodId: unknown, today: number): { stack: FoodItem } | { error: CommandError } {
@@ -134,8 +133,8 @@ export const buyFood: CommandHandler<BuyFoodPayload, BuyFoodResult> = (
   if (state.money < total) {
     return { ok: false, error: { code: 'INSUFFICIENT_FUNDS', message: 'Not enough $FISH for the food.' } };
   }
-  const rng = createRng(state.rngState);
-  const id = nextFoodId(rng);
+  // Draw from the dispatched stream (ctx.rng), never a locally built one.
+  const id = nextFoodId(ctx.rng);
   spend(state, ctx.events, total);
   state.food[id] = makeStack(id, kind, qty, state.clock.gameDay);
   return { ok: true, value: { foodId: id, qty, price: total } };

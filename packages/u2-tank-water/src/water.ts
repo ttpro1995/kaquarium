@@ -49,7 +49,13 @@ export function qualityBandOf(waste: number, nitrate: number): WaterQualityBand 
   return 'poor';
 }
 
-/** Feeding-activity multiplier from satiety (W7; U2-local default until U3 defines its scale). */
+/**
+ * Feeding-activity multiplier from satiety (W7).
+ * U2-local default until U3 defines its activity scale — owner: U3
+ * (satiety handling in u3-fish/src/fish.ts: HUNGER_BELOW bands, SPAWN_SATIETY;
+ * healthOf in u3-fish/src/selectors.ts). Reconcile these bands with U3's
+ * satiety thresholds before changing them; do not drift the two scales apart.
+ */
 export function activityOf(satiety: number): number {
   if (satiety >= 70) return 1.2;
   if (satiety >= 30) return 1.0;

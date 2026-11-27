@@ -7,10 +7,10 @@ import type {
   Notification,
   Species,
 } from '@aquarium/u1-sim-foundation/state';
-import { demandFor, trendFor } from './market.js';
+import { demandFor, trendFor, SATURATION_PER_SALE } from './market.js';
 import { fulfilReward } from './orders.js';
 import { LEVEL_XP, MAX_LEVEL } from './progression.js';
-import { priceForFish } from './pricing.js';
+import { isSellableHealth, priceForFish } from './pricing.js';
 
 export type SpeciesOf = (speciesId: string) => Species | undefined;
 
@@ -34,18 +34,33 @@ export interface BulkPreview {
   total: number;
 }
 
-/** Confirm-screen projection of a bulk sale (U7): never mutates. */
+/** Confirm-screen projection of a bulk sale (U7): never mutates.
+ * Exact mirror of sellBulk pricing and eligibility (BR16.2/BR16.3): sick
+ * fish (health < 40) list as skipped, and each sold fish prices at the
+ * sequentially saturated demand (x0.97 per fish, per species), so the
+ * preview total equals the real sale total. Unknown fish and
+ * catalogue-missing species skip the same way. U7 shows this total
+ * verbatim — it is exact, not approximate.
+ */
 export function bulkPreview(state: GameState, fishIds: readonly string[], speciesOf: SpeciesOf): BulkPreview {
   const items: BulkPreviewItem[] = [];
   const skipped: string[] = [];
+  const simulatedDemand = new Map<string, number>();
   let total = 0;
   let sold = 0;
   for (const fishId of [...new Set(fishIds)]) {
     const fish: Fish | undefined = state.fish[fishId];
-    const live =
-      fish === undefined
-        ? undefined
-        : priceForFish(fish, speciesOf(fish.speciesId), demandFor(state, fish.speciesId), trendFor(state, fish.speciesId));
+    if (fish === undefined || !isSellableHealth(fish.health)) {
+      items.push({ fishId, price: null, skipped: true });
+      skipped.push(fishId);
+      continue;
+    }
+    let demand = simulatedDemand.get(fish.speciesId);
+    if (demand === undefined) {
+      demand = demandFor(state, fish.speciesId);
+      simulatedDemand.set(fish.speciesId, demand);
+    }
+    const live = priceForFish(fish, speciesOf(fish.speciesId), demand, trendFor(state, fish.speciesId));
     if (live === undefined) {
       items.push({ fishId, price: null, skipped: true });
       skipped.push(fishId);
@@ -54,6 +69,7 @@ export function bulkPreview(state: GameState, fishIds: readonly string[], specie
     items.push({ fishId, price: live, skipped: false });
     total += live;
     sold++;
+    simulatedDemand.set(fish.speciesId, demand * SATURATION_PER_SALE);
   }
   return { items, sold, skipped, total };
 }

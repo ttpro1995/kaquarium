@@ -14,7 +14,13 @@ import {
 import { register as registerWater } from '@aquarium/u2-tank-water';
 import { register as registerBreeding } from '../src/index.js';
 import { breedingParamsFor } from '../src/cohorts.js';
-import { attemptCondition, pairGates } from '../src/breeding.js';
+import { attemptCondition, gateReport, gatesPass, pairGates } from '../src/breeding.js';
+import {
+  BREED_HEALTH_GATE,
+  BREED_QUALITY_GATE,
+  BREED_SATIETY_GATE,
+  BREED_TEMP_FIT_GATE,
+} from '../src/breeding.js';
 
 function breedingSpecies(kind: 'livebearer' | 'scatter', extra: Record<string, unknown> = {}): Species {
   const base: Species = {
@@ -131,6 +137,67 @@ describe('spawn attempts (BR14.2)', () => {
     expect(attemptCondition(state, female, species)).toBeCloseTo(1, 10);
     const params = breedingParamsFor(species);
     expect(params.speciesBaseRate).toBeCloseTo(0.3, 10);
+  });
+
+  it('tick inline matches pairGates+gatesPass over the boundary matrix', () => {
+    const { kernel, species } = setup('livebearer');
+    bonded(kernel, species.id, 1);
+    const state = kernel.store.state;
+    const baseFemale = state.fish.f1 as Fish;
+    const baseMale = state.fish.m1 as Fish;
+    // Boundary values straddle each gate threshold. gateReport takes the
+    // hoisted tank reads directly, so the matrix drives the exact values
+    // the hot loop inlines (no per-pair allocation there; pairGates stays
+    // the tested public form of the same five checks).
+    const healths = [BREED_HEALTH_GATE - 1, BREED_HEALTH_GATE];
+    const satieties = [BREED_SATIETY_GATE - 1, BREED_SATIETY_GATE];
+    const qualities = [BREED_QUALITY_GATE - 1, BREED_QUALITY_GATE];
+    const tempFits = [BREED_TEMP_FIT_GATE - 0.01, BREED_TEMP_FIT_GATE];
+    for (const mature of [true, false]) {
+      for (const health of healths) {
+        for (const satiety of satieties) {
+          for (const quality of qualities) {
+            for (const tempFit of tempFits) {
+              const female = { ...baseFemale, mature, health, satiety };
+              const male = { ...baseMale, mature, health, satiety };
+              const gates = gateReport(quality, tempFit, female, male);
+              // Hot-loop inline replica (breeding.ts runBreedingTick): the
+              // same five checks over the same thresholds.
+              const inline =
+                female.mature &&
+                male.mature &&
+                female.health >= BREED_HEALTH_GATE &&
+                male.health >= BREED_HEALTH_GATE &&
+                female.satiety >= BREED_SATIETY_GATE &&
+                male.satiety >= BREED_SATIETY_GATE &&
+                tempFit >= BREED_TEMP_FIT_GATE &&
+                quality >= BREED_QUALITY_GATE;
+              expect(gatesPass(gates)).toBe(inline);
+              // Only the all-at-or-above corner passes.
+              expect(inline).toBe(
+                mature &&
+                  health >= BREED_HEALTH_GATE &&
+                  satiety >= BREED_SATIETY_GATE &&
+                  quality >= BREED_QUALITY_GATE &&
+                  tempFit >= BREED_TEMP_FIT_GATE,
+              );
+            }
+          }
+        }
+      }
+    }
+    // Spot-check the state-derived public form agrees at the all-pass
+    // corner and rejects below the quality bound.
+    {
+      const female = state.fish.f1 as Fish;
+      const male = state.fish.m1 as Fish;
+      expect(gatesPass(pairGates(state, female, male, species))).toBe(true);
+      const lowQuality = {
+        ...state,
+        tank: { ...state.tank, water: { ...state.tank.water, waste: 61, nitrate: 0 } },
+      };
+      expect(gatesPass(pairGates(lowQuality, female, male, species))).toBe(false);
+    }
   });
 });
 

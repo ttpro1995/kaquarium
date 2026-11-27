@@ -52,7 +52,7 @@ export function validateScheduleInput(
   const { foodKind, portions, intervalHours } = input;
   if (
     typeof portions !== 'number' ||
-    !Number.isFinite(portions) ||
+    !Number.isInteger(portions) ||
     portions < 1 ||
     typeof intervalHours !== 'number' ||
     !Number.isFinite(intervalHours) ||

@@ -11,10 +11,24 @@ describe('types + store (BR1.3, US9.3, US11.1)', () => {
     expect(s.clock.gameHour).toBe(8);
     expect(s.fish).toEqual({});
     expect(s.cohorts).toEqual({});
-    expect(s.food).toEqual({});
     expect(s.orders).toEqual([]);
     expect(s.notifications).toEqual([]);
     expect(s.money).toBeGreaterThanOrEqual(0);
+  });
+
+  it('boots with the BR12.4 starter flakes stack (U4 spec, U1 bootstrap)', () => {
+    const s = createInitialState(42);
+    const ids = Object.keys(s.food);
+    expect(ids).toEqual(['food-starter']);
+    expect(s.food['food-starter']).toEqual({
+      id: 'food-starter',
+      kind: 'flakes',
+      qty: 10,
+      quality: 0.7,
+      shelfLifeDays: 0,
+      acquiredDay: s.clock.gameDay,
+      target: 'fish',
+    });
   });
 
   it('mirrors RngState.seed from GameState.seed at boot (Q3-A)', () => {

@@ -304,6 +304,27 @@ export const START_MONEY = 100;
 export const START_DAY = 1;
 export const START_HOUR = 8;
 
+/** Stable id for the BR12.4 bootstrap stack; avoids the buyFood `food-<hex>` pattern. */
+export const STARTER_FOOD_ID = 'food-starter';
+
+/**
+ * BR12.4 (U4 spec) bootstrap cupboard: one flakes stack of 10 dated to
+ * the given day. Values mirror the U4 FOOD_CATALOG flakes row; U1 cannot
+ * import U4 (U4 depends on U1), so the U4 starter cross-check pins drift.
+ * Single source for createInitialState and the v1->v2 migration backfill.
+ */
+export function starterFoodStack(acquiredDay: number): FoodItem {
+  return {
+    id: STARTER_FOOD_ID,
+    kind: 'flakes',
+    qty: 10,
+    quality: 0.7,
+    shelfLifeDays: 0,
+    acquiredDay,
+    target: 'fish',
+  };
+}
+
 export function defaultSettings(): Settings {
   return { reducedMotion: false, autoPauseCritical: true, volume: { master: 0.8, sfx: 0.8 } };
 }
@@ -341,7 +362,9 @@ export function createInitialState(seed: number, opts?: { speed?: Speed; money?:
     tank: defaultTank(),
     fish: {},
     cohorts: {},
-    food: {},
+    // BR12.4 (U4 spec): every new save boots with one flakes stack of 10,
+    // dated to the bootstrap day (single source: starterFoodStack).
+    food: { [STARTER_FOOD_ID]: starterFoodStack(START_DAY) },
     market: {},
     orders: [],
     notifications: [],

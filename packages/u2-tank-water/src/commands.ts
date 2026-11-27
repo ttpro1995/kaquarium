@@ -68,13 +68,21 @@ const EQUIPMENT_PRICES: Record<EquipmentKind, Partial<Record<number, number>>> =
   autoFeeder: { 1: 150 },
 };
 
-/** U6 progression unlock gating each purchase (W10). */
-const EQUIPMENT_UNLOCKS: Record<EquipmentKind, Partial<Record<number, string>>> = {
+/**
+ * U2-gated progression unlock ids (canonical source; U6 progression awards
+ * these — see the unlock-ID table in contract-summary C1/C4 and the
+ * u6-commerce unlocks-crosscheck test, which asserts every id here is a
+ * subset of U6's UNLOCKS awards).
+ */
+export const EQUIPMENT_UNLOCKS: Record<EquipmentKind, Partial<Record<number, string>>> = {
   filter: { 2: 'equipment.filter2', 3: 'equipment.filter3' },
   heater: { 1: 'equipment.heater' },
   light: { 2: 'equipment.light2', 3: 'equipment.light3' },
   autoFeeder: { 1: 'equipment.autofeeder' },
 };
+
+/** Tier unlock ids gated by tank.upgradeTier (canonical source; awarded by U6). */
+export const TIER_UNLOCKS: Partial<Record<number, string>> = { 2: 'tier.2', 3: 'tier.3' };
 
 const TIER_PRICES: Partial<Record<number, number>> = { 2: 300, 3: 800 };
 
@@ -209,8 +217,11 @@ export const upgradeTier: CommandHandler<UpgradeTierPayload, UpgradeTierResult> 
   if (typeof tier !== 'number' || !Number.isInteger(tier) || tier < 2 || tier > 3 || tier <= state.tank.tier) {
     return { ok: false, error: { code: 'INVALID_QUANTITY', message: 'Tier must be 2 or 3 and above the current tier.' } };
   }
-  const locked = checkUnlock(state, `tier.${String(tier)}`, `tier ${String(tier)}`);
-  if (locked) return { ok: false, error: locked };
+  const unlockId = TIER_UNLOCKS[tier];
+  if (unlockId !== undefined) {
+    const locked = checkUnlock(state, unlockId, `tier ${String(tier)}`);
+    if (locked) return { ok: false, error: locked };
+  }
   const price = TIER_PRICES[tier];
   if (price === undefined) {
     return { ok: false, error: { code: 'INVALID_QUANTITY', message: 'Tier must be 2 or 3 and above the current tier.' } };

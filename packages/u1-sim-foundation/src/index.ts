@@ -44,8 +44,10 @@ export {
   validateClock,
   validateGameState,
   isClockPaused,
+  starterFoodStack,
   tierVolumeL,
   TIER_VOLUME_L,
+  STARTER_FOOD_ID,
   defaultTank,
 } from './types.js';
 export { canonicalJson } from './canonicalJson.js';
@@ -75,6 +77,7 @@ export {
   type SimEvent,
   type BaseSimEvent,
   type KnownSimEvent,
+  type MoneyChangedPayload,
   type NotificationMapper,
   type SimEventSubscriber,
   drainEventBuffer,

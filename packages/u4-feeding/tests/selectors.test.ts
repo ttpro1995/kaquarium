@@ -28,8 +28,9 @@ describe('U4 selectors for U7 panels', () => {
   it('foodStock lists every stack including expired flags', () => {
     const state = stocked();
     state.clock.gameDay = 20;
-    expect(foodStock(state).map((s) => s.id)).toEqual(['fresh', 'old', 'gone']);
-    expect(foodStock(state, 'flakes').map((s) => s.id)).toEqual(['fresh', 'old']);
+    // Insertion order: the BR12.4 starter lands first, then the fixture stacks.
+    expect(foodStock(state).map((s) => s.id)).toEqual(['food-starter', 'fresh', 'old', 'gone']);
+    expect(foodStock(state, 'flakes').map((s) => s.id)).toEqual(['food-starter', 'fresh', 'old']);
     const gone = state.food.gone;
     if (!gone) throw new Error('fixture missing');
     expect(isExpired(gone, 20)).toBe(true);
@@ -38,7 +39,8 @@ describe('U4 selectors for U7 panels', () => {
   it('usableFood returns non-expired stacks oldest-first', () => {
     const state = stocked();
     state.clock.gameDay = 20;
-    expect(usableFood(state, 'flakes').map((s) => s.id)).toEqual(['old', 'fresh']);
+    // Starter and old tie on acquiredDay 1; insertion order breaks the tie.
+    expect(usableFood(state, 'flakes').map((s) => s.id)).toEqual(['food-starter', 'old', 'fresh']);
     expect(usableFood(state, 'liveFirst')).toEqual([]);
   });
 

@@ -61,6 +61,12 @@ export interface StageTransition {
  * Pure stage rule (BR10.5): juvenile→adult at maturityDays, adult→senior
  * at SENIOR_FRACTION of lifespanDays. Returns the transition to apply,
  * or null when the stage holds. Never mutates; the tick applies and emits.
+ *
+ * Intentional: at most one transition per tick. A pre-aged juvenile whose
+ * ageDays already clears the senior line — reachable only via a hand-built
+ * or migrated save (spawn sets ageDays to 0 and live ticks accrue 1/24) —
+ * converges over two ticks (adult, then senior) with one fishMatured event
+ * each. Safe and needs no special-case jump; live play can never produce it.
  */
 export function nextStage(
   stage: 'juvenile' | 'adult' | 'senior',

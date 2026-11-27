@@ -44,6 +44,7 @@ export {
   feedingSystem,
   registerFeeding,
   type DispenseResult,
+  type DispenseOptions,
 } from './feeding.js';
 export {
   buyFood,

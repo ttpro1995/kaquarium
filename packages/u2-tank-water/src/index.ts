@@ -46,6 +46,8 @@ export {
   buyEquipment,
   upgradeTier,
   registerCommands,
+  EQUIPMENT_UNLOCKS,
+  TIER_UNLOCKS,
   type EquipmentKind,
   type WaterChangePayload,
   type WaterChangeResult,
