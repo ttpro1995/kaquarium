@@ -12,7 +12,7 @@ import type {
 import { activityOf, COHORT_LOAD_PER_FRY } from '@aquarium/u2-tank-water';
 import { SPAWN_SATIETY } from '@aquarium/u3-fish';
 import { attemptCondition, attemptProbability, gatesPass, pairGates, type GateReport } from './breeding.js';
-import { breedingParamsFor } from './cohorts.js';
+import { breedingParamsFor, stuntedAtGrading } from './cohorts.js';
 
 /** Every live bond whose female swims in the MVP tank. */
 export function pairsInTank(state: GameState): BreedingPair[] {
@@ -107,7 +107,7 @@ export function gradePreview(
   const cohort = state.cohorts[cohortId];
   if (cohort === undefined || species === undefined) return undefined;
   const capacity = state.tank.volumeL;
-  const stunted = cohort.firstFoodDays < species.juvenileDays / 2;
+  const stunted = stuntedAtGrading(cohort, species.juvenileDays);
   if (cohort.stage === 'eggs') {
     return {
       cohortId, count, ready: false, reason: 'eggs',

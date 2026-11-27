@@ -284,6 +284,31 @@ describe('breeding.grade (US5.2–US5.3)', () => {
     });
   });
 
+  it('rejects a catalogue-invalid species as UNKNOWN_ENTITY instead of throwing', () => {
+    const { kernel, species } = setup();
+    readyCohort(kernel, species, 10);
+    kernel.store.state.tank.volumeL = 1000; // isolate fish creation from the capacity guard
+    // Simulate a catalogue entry that lost a required field: spawnFish
+    // would throw on it, but the grade contract is an outcome union.
+    const entry = kernel.species.get('guppy') as unknown as Record<string, unknown>;
+    delete entry.adultSizeCm;
+    const before = canonicalJson({
+      fish: kernel.store.state.fish,
+      cohorts: kernel.store.state.cohorts,
+    });
+    let outcome: unknown;
+    expect(() => {
+      outcome = kernel.dispatch('breeding.grade', { cohortId: 'c1', count: 2 });
+    }).not.toThrow();
+    expect(outcome).toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: 'UNKNOWN_ENTITY' }),
+    });
+    expect(canonicalJson({ fish: kernel.store.state.fish, cohorts: kernel.store.state.cohorts })).toBe(
+      before,
+    );
+  });
+
   it('grades at newborn activity: near-capacity fit recomputes within volume', async () => {
     const { activityOf, recomputeBioload, COHORT_LOAD_PER_FRY } = await import('@aquarium/u2-tank-water');
     const { SPAWN_SATIETY } = await import('@aquarium/u3-fish');

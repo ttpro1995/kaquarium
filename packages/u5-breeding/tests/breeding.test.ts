@@ -14,7 +14,14 @@ import {
 import { register as registerWater } from '@aquarium/u2-tank-water';
 import { register as registerBreeding } from '../src/index.js';
 import { breedingParamsFor } from '../src/cohorts.js';
-import { attemptCondition, gateReport, gatesPass, pairGates } from '../src/breeding.js';
+import {
+  attemptCondition,
+  gateReport,
+  gatesPass,
+  pairGates,
+  runBreedingTick,
+} from '../src/breeding.js';
+import type { Rng } from '@aquarium/u1-sim-foundation';
 import {
   BREED_HEALTH_GATE,
   BREED_QUALITY_GATE,
@@ -275,6 +282,42 @@ describe('livebearer and egg-layer paths (BR14.3–BR14.4)', () => {
     expect(still?.count).toBe(count);
     expect(seen.flat()).toContainEqual({ kind: 'fryHatched', cohortId: ids[0], count: still?.count });
     expect(kernel.store.state.clock.gameDay).toBeGreaterThanOrEqual(laidDay);
+  });
+
+  it('withholds a zero-count clutch: no cohort, no breedingStarted, pair stays paired', () => {
+    // Deterministic stub stream: the attempt roll passes (0 < p), the
+    // clutch draw takes the minimum, fertility rolls its floor (0.6).
+    const stub: Rng = {
+      next: () => 0,
+      nextInt: (min: number) => min,
+      pick: <T>(items: readonly T[]): T => items[0] as T,
+    };
+    const { kernel } = setup('scatter', { clutch: [1, 1], speciesBaseRate: 24 });
+    const sid = 'danio';
+    bonded(kernel, sid, 1);
+    // Bear at the gate floors but still passing: satiety 30, stressed
+    // (calm 0), so condition ≈ 0.64 and
+    // eggClutchCount(1, 0.6, 0.64) = round(0.492) = 0.
+    kernel.store.state.fish.f1 = adultFish('f1', 'female', {
+      speciesId: sid,
+      satiety: 30,
+      stress: 100,
+    });
+    kernel.store.state.fish.m1 = adultFish('m1', 'male', { speciesId: sid });
+    const today = kernel.store.state.clock.gameDay;
+    const events: SimEvent[] = [];
+    runBreedingTick({
+      state: kernel.store.state,
+      tick: 0,
+      now: { day: today, hour: 8 },
+      rng: stub,
+      species: kernel.species,
+      events,
+      catchUp: false,
+    });
+    expect(Object.keys(kernel.store.state.cohorts)).toHaveLength(0);
+    expect(events.filter((e) => e.kind === 'breedingStarted')).toHaveLength(0);
+    expect(kernel.store.state.pairs.p1).toMatchObject({ state: 'paired', readyDay: today });
   });
 
   it('blocks back-to-back spawns inside cycleDays', () => {

@@ -5,6 +5,7 @@
 // store untouched by construction, never by rollback. A signal is a
 // returned outcome union, never an exception.
 import type { GameState } from '@aquarium/u1-sim-foundation/state';
+import { validateSpeciesEntry } from '@aquarium/u1-sim-foundation';
 import {
   declareCommandType,
   type CommandHandler,
@@ -109,7 +110,8 @@ function isGenomeLike(value: unknown): value is Genome {
 }
 
 /**
- * W25 grade (BR15.2, BR15.3): UNKNOWN_ENTITY (cohort, then catalogue) >
+ * W25 grade (BR15.2, BR15.3): UNKNOWN_ENTITY (cohort, then catalogue —
+ * a missing entry or one spawnFish would reject) >
  * INVALID_SETTING (eggs / not ready) > INVALID_QUANTITY > TANK_FULL (batch
  * formula, all-or-nothing). Creates N Fish per U3's field rules with
  * parents set and the first-food stunt flag; the remainder stays.
@@ -128,7 +130,7 @@ export const grade: CommandHandler<GradePayload, GradeResult> = (
     return { ok: false, error: { code: 'UNKNOWN_ENTITY', message: 'Unknown cohort.' } };
   }
   const species = ctx.species.get(cohort.speciesId);
-  if (species === undefined) {
+  if (species === undefined || validateSpeciesEntry(species).length > 0) {
     return { ok: false, error: { code: 'UNKNOWN_ENTITY', message: 'Unknown species for the cohort.' } };
   }
   if (cohort.stage === 'eggs' || cohort.ageDays < species.juvenileDays) {

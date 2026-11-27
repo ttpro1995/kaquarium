@@ -213,6 +213,9 @@ export function runBreedingTick(ctx: TickContext): void {
       const clutch0 = drawClutch(ctx.rng, params);
       const fertility = rollFertility(ctx.rng);
       const count = eggClutchCount(clutch0, fertility, condition);
+      // A zero-count clutch never starts: no cohort, no breedingStarted,
+      // and the pair stays paired for a later attempt.
+      if (count <= 0) continue;
       const cohortId = nextCohortId(ctx.rng);
       cohorts[cohortId] = makeEggsCohort({
         id: cohortId,
