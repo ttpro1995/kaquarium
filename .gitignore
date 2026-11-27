@@ -26,3 +26,8 @@ aidlc/diagnostics/
 .aidlc/worktree-meta.json
 .aidlc/base-source-listing.tsv
 # END AI-DLC:gitignore
+
+# Local/generated, never committed
+node_modules/
+.kilo/
+coverage/
