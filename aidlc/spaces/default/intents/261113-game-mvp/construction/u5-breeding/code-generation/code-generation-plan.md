@@ -9,47 +9,47 @@
 ## Steps
 
 ### Step 1: Project structure and production configuration skeleton. (US5.1–US5.3)
-- [ ] Create `packages/u5-breeding/package.json` (name `@aquarium/u5-breeding`, type module, no new deps), `tsconfig.json` (extends root, strict), `src/` + `tests/` dirs.
+- [x] Create `packages/u5-breeding/package.json` (name `@aquarium/u5-breeding`, type module, no new deps), `tsconfig.json` (extends root, strict), `src/` + `tests/` dirs.
 
 ### Step 2: Bootstrap the minimal test runner/configuration and record the exact unit-scoped command.
-- [ ] Verify `vitest run packages/u5-breeding` executes (empty suite green); command recorded in `unit-test-instructions.md`.
+- [x] Verify `vitest run packages/u5-breeding` executes (empty suite green); command recorded in `unit-test-instructions.md`.
 
 ### Step 3: Data model — Red: pair/cohort field tests. (FR5.1–FR5.3; BR14–BR15)
-- [ ] Write failing `packages/u5-breeding/tests/pairs.test.ts`: pair/unpair validation (eligibility, gravid/cooling re-pair rejected INVALID_SETTING, archetype gate, silent dissolution); cohort construction (fertility roll range, hatchDay, counters zeroed). Record failing output.
+- [x] Write failing `packages/u5-breeding/tests/pairs.test.ts`: pair/unpair validation (eligibility, gravid/cooling re-pair rejected INVALID_SETTING, archetype gate, silent dissolution); cohort construction (fertility roll range, hatchDay, counters zeroed). Record failing output.
 
 ### Step 4: Data model — Green: implement pair/cohort state.
-- [ ] `src/pairs.ts` (BreedingPair helpers), `src/cohorts.ts` (FryCohort helpers); parents genomePool plumbing.
-- [ ] Run pair tests green.
+- [x] `src/pairs.ts` (BreedingPair helpers), `src/cohorts.ts` (FryCohort helpers); parents genomePool plumbing.
+- [x] Run pair tests green.
 
 ### Step 5: Data model — Refactor while green.
-- [ ] Share gate/condition helpers; keep tests green.
+- [x] Share gate/condition helpers; keep tests green.
 
 ### Step 6: Business logic — Red: spawn/survival/grading tests. (BR14–BR15)
-- [ ] Write failing `packages/u5-breeding/tests/breeding.test.ts` (10): condition-scaled attempts with bound gates (tempFit ≥ 0.5, quality ≥ 40), no punishment on gate failure; livebearer gestation → seeded scaled brood → cooldown; egg laying (fertility 0.6–0.9) → timed hatch; cycleDays cooldown; day-boundary survival decay with newborn grace (ideal ≈ 0.95, neglected ≈ 0.70); stunt flag from first-food test; grading (eggs/not-ready/quantity/TANK_FULL batch formula, remainder stays, U3-rule Fish with parents + inheritGenome + stunted); silent cleanup. Record failing output.
+- [x] Write failing `packages/u5-breeding/tests/breeding.test.ts` (10): condition-scaled attempts with bound gates (tempFit ≥ 0.5, quality ≥ 40), no punishment on gate failure; livebearer gestation → seeded scaled brood → cooldown; egg laying (fertility 0.6–0.9) → timed hatch; cycleDays cooldown; day-boundary survival decay with newborn grace (ideal ≈ 0.95, neglected ≈ 0.70); stunt flag from first-food test; grading (eggs/not-ready/quantity/TANK_FULL batch formula, remainder stays, U3-rule Fish with parents + inheritGenome + stunted); silent cleanup. Record failing output.
 
 ### Step 7: Business logic — Green: implement breeding-phase system.
-- [ ] `src/breeding.ts`: registered `u5.breeding` system (breeding phase: dissolve dead refs, cooling→paired promotion, attempts, gestation/hatch transitions, midnight decay, XP-relevant event emission).
-- [ ] Run breeding tests green.
+- [x] `src/breeding.ts`: registered `u5.breeding` system (breeding phase: dissolve dead refs, cooling→paired promotion, attempts, gestation/hatch transitions, midnight decay, XP-relevant event emission).
+- [x] Run breeding tests green.
 
 ### Step 8: Business logic — Refactor while green.
-- [ ] Extract attempt-condition and brood-scale functions; keep tests green.
+- [x] Extract attempt-condition and brood-scale functions; keep tests green.
 
 ### Step 9: API/endpoint — Red: command + event tests. (US5.1–US5.3)
-- [ ] Write failing `packages/u5-breeding/tests/commands.test.ts` (7): pair/unpair/grade via real bus (precedence UNKNOWN_ENTITY > INVALID_SETTING; trio breedingStarted/fryHatched/cohortGraded; nothing on rejection); gradePreview selector (capacity + stunt, no mutation). Record failing output.
+- [x] Write failing `packages/u5-breeding/tests/commands.test.ts` (7): pair/unpair/grade via real bus (precedence UNKNOWN_ENTITY > INVALID_SETTING; trio breedingStarted/fryHatched/cohortGraded; nothing on rejection); gradePreview selector (capacity + stunt, no mutation). Record failing output.
 
 ### Step 10: API/endpoint — Green: implement commands + events + register + selectors.
-- [ ] `src/commands.ts`, `src/events.ts`, `src/selectors.ts` (pairsInTank, cohortsInTank, breedingReadiness, gradePreview), `src/index.ts` (register).
-- [ ] Run command tests green.
+- [x] `src/commands.ts`, `src/events.ts`, `src/selectors.ts` (pairsInTank, cohortsInTank, breedingReadiness, gradePreview), `src/index.ts` (register).
+- [x] Run command tests green.
 
 ### Step 11: API/endpoint — Refactor while green.
-- [ ] Consolidate validation; keep tests green.
+- [x] Consolidate validation; keep tests green.
 
 ### Step 12: Integration tests for key boundaries.
-- [ ] `packages/u5-breeding/tests/integration.test.ts`: pair → spawn → hatch → feed (U4 feedFry) → grade → stunted adults; hatch XP sighting by U6 (interface check).
-- [ ] Benchmark probe `packages/u5-breeding/tests/benchmark.test.ts`: 50 warmup, p95-of-300 ≤ 0.125 ms (50-pair/10-cohort fixture); heap < 64 KB/100 ticks (informational).
+- [x] `packages/u5-breeding/tests/integration.test.ts`: pair → spawn → hatch → feed (U4 feedFry) → grade → stunted adults; hatch XP sighting by U6 (interface check).
+- [x] Benchmark probe `packages/u5-breeding/tests/benchmark.test.ts`: 50 warmup, p95-of-300 ≤ 0.125 ms (50-pair/10-cohort fixture); heap < 64 KB/100 ticks (informational).
 
 ### Step 13: Documentation and traceability.
-- [ ] `code-summary.md`, `source-manifest.json`, `traceability.json` mapping BR14/BR15 + NFR1.1/NFR3.1/NFR4.1/NFR4.2/NFR5.1 to the new files.
+- [x] `code-summary.md`, `source-manifest.json`, `traceability.json` mapping BR14/BR15 + NFR1.1/NFR3.1/NFR4.1/NFR4.2/NFR5.1 to the new files.
 
 Repository/data-access (shared U1 store) and frontend layers are genuinely inapplicable and omitted without changing TDD methodology.
 

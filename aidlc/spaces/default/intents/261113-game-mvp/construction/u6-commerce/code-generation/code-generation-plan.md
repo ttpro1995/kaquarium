@@ -9,47 +9,47 @@
 ## Steps
 
 ### Step 1: Project structure and production configuration skeleton. (US6.1–US8.1, US12.1)
-- [ ] Create `packages/u6-commerce/package.json` (name `@aquarium/u6-commerce`, type module, no new deps), `tsconfig.json` (extends root, strict), `src/` + `tests/` dirs.
+- [x] Create `packages/u6-commerce/package.json` (name `@aquarium/u6-commerce`, type module, no new deps), `tsconfig.json` (extends root, strict), `src/` + `tests/` dirs.
 
 ### Step 2: Bootstrap the minimal test runner/configuration and record the exact unit-scoped command.
-- [ ] Verify `vitest run packages/u6-commerce` executes (empty suite green); command recorded in `unit-test-instructions.md`.
+- [x] Verify `vitest run packages/u6-commerce` executes (empty suite green); command recorded in `unit-test-instructions.md`.
 
 ### Step 3: Data model — Red: market/order/progression field tests. (FR6–FR8; BR16–BR18)
-- [ ] Write failing `packages/u6-commerce/tests/pricing.test.ts`: eight-factor formula bands (size/age/colour/rarity/health/genetics/market, floor 1, sick < 40 unsellable); demand ×0.97/sale, +8%/day recovery, 3-day trend cycle; board generation (3–6, customer params, deadlines); XP sources/thresholds (sale/5, hatch+10, reward/4; L2 200, L3 600); midnight electricity clamp. Record failing output.
+- [x] Write failing `packages/u6-commerce/tests/pricing.test.ts`: eight-factor formula bands (size/age/colour/rarity/health/genetics/market, floor 1, sick < 40 unsellable); demand ×0.97/sale, +8%/day recovery, 3-day trend cycle; board generation (3–6, customer params, deadlines); XP sources/thresholds (sale/5, hatch+10, reward/4; L2 200, L3 600); midnight electricity clamp. Record failing output.
 
 ### Step 4: Data model — Green: implement price/demand/board/progression state.
-- [ ] `src/pricing.ts` (sellPrice + factor helpers reading U3 selectors), `src/market.ts` (demand/trend), `src/orders.ts` (generation, fulfil math, expiry), `src/progression.ts` (XP/levels/unlocks).
-- [ ] Run pricing tests green.
+- [x] `src/pricing.ts` (sellPrice + factor helpers reading U3 selectors), `src/market.ts` (demand/trend), `src/orders.ts` (generation, fulfil math, expiry), `src/progression.ts` (XP/levels/unlocks).
+- [x] Run pricing tests green.
 
 ### Step 5: Data model — Refactor while green.
-- [ ] Share clamp/floor helpers; keep tests green.
+- [x] Share clamp/floor helpers; keep tests green.
 
 ### Step 6: Business logic — Red: sell/fulfil/notify tests. (BR16–BR19)
-- [ ] Write failing `packages/u6-commerce/tests/commerce.test.ts` (10): atomic sell (remove/pay/saturate/XP, Trio events); bulk skip-sick/reject-unknown + dedupe + empty-list; fulfil (precedence, trio orderFulfilled/moneyChanged, no saturation, rep+1); expiry (rep −2 floor 0); cascade level-ups; mapper table (incl. fishSpawned/fishSick nulls); fishSick batch collapse via notify system; queue cap 100 (info→warn, critical overflow) + dismiss. Record failing output.
+- [x] Write failing `packages/u6-commerce/tests/commerce.test.ts` (10): atomic sell (remove/pay/saturate/XP, Trio events); bulk skip-sick/reject-unknown + dedupe + empty-list; fulfil (precedence, trio orderFulfilled/moneyChanged, no saturation, rep+1); expiry (rep −2 floor 0); cascade level-ups; mapper table (incl. fishSpawned/fishSick nulls); fishSick batch collapse via notify system; queue cap 100 (info→warn, critical overflow) + dismiss. Record failing output.
 
 ### Step 7: Business logic — Green: implement commerce + notify systems.
-- [ ] `src/commerce.ts` (commerce system: recovery→costs→expiry→hatch-XP→upkeep→cache; notify system: fishSick aggregation + away summary), `Fish.value` cache refresh (C2-allowlisted).
-- [ ] Run commerce tests green.
+- [x] `src/commerce.ts` (commerce system: recovery→costs→expiry→hatch-XP→upkeep→cache; notify system: fishSick aggregation + away summary), `Fish.value` cache refresh (C2-allowlisted).
+- [x] Run commerce tests green.
 
 ### Step 8: Business logic — Refactor while green.
-- [ ] Extract day-boundary order into named steps; keep tests green.
+- [x] Extract day-boundary order into named steps; keep tests green.
 
 ### Step 9: API/endpoint — Red: command + selector tests.
-- [ ] Write failing `packages/u6-commerce/tests/commands.test.ts` (8): buyFish (trio, TANK_FULL via projectedBioload, NOT_AVAILABLE gates) / sellFish / sellBulk / orders.fulfil / notifications.dismiss via real bus; preview selectors (sellPrice, bulkPreview, orderRewardPreview, buyableSpecies, notificationQueue) without mutation. Record failing output.
+- [x] Write failing `packages/u6-commerce/tests/commands.test.ts` (8): buyFish (trio, TANK_FULL via projectedBioload, NOT_AVAILABLE gates) / sellFish / sellBulk / orders.fulfil / notifications.dismiss via real bus; preview selectors (sellPrice, bulkPreview, orderRewardPreview, buyableSpecies, notificationQueue) without mutation. Record failing output.
 
 ### Step 10: API/endpoint — Green: implement commands + mapper + selectors + register.
-- [ ] `src/commands.ts`, `src/notifications.ts` (mapper + table), `src/selectors.ts`, `src/index.ts` (register systems + commands + notification mapper).
-- [ ] Run command tests green.
+- [x] `src/commands.ts`, `src/notifications.ts` (mapper + table), `src/selectors.ts`, `src/index.ts` (register systems + commands + notification mapper).
+- [x] Run command tests green.
 
 ### Step 11: API/endpoint — Refactor while green.
-- [ ] Consolidate validation/precedence; keep tests green.
+- [x] Consolidate validation/precedence; keep tests green.
 
 ### Step 12: Integration tests for key boundaries.
-- [ ] `packages/u6-commerce/tests/integration.test.ts`: buy → sell → saturation → order fulfil → level-up end-to-end on the real kernel; away-summary counts after catch-up.
-- [ ] Benchmark probe `packages/u6-commerce/tests/benchmark.test.ts`: 50 warmup, p95-of-300 ≤ 0.125 ms commerce+notify ticks (full board, 100-notification queue); heap < 64 KB/100 ticks (informational).
+- [x] `packages/u6-commerce/tests/integration.test.ts`: buy → sell → saturation → order fulfil → level-up end-to-end on the real kernel; away-summary counts after catch-up.
+- [x] Benchmark probe `packages/u6-commerce/tests/benchmark.test.ts`: 50 warmup, p95-of-300 ≤ 0.125 ms commerce+notify ticks (full board, 100-notification queue); heap < 64 KB/100 ticks (informational).
 
 ### Step 13: Documentation and traceability.
-- [ ] `code-summary.md`, `source-manifest.json`, `traceability.json` mapping BR16–BR19 + NFR1.1/NFR3.1/NFR4.1/NFR4.2/NFR5.1 to the new files.
+- [x] `code-summary.md`, `source-manifest.json`, `traceability.json` mapping BR16–BR19 + NFR1.1/NFR3.1/NFR4.1/NFR4.2/NFR5.1 to the new files.
 
 Repository/data-access (shared U1 store) and frontend layers are genuinely inapplicable and omitted without changing TDD methodology.
 

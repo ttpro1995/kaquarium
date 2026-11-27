@@ -1,1 +1,1 @@
-npx tsc --noEmit && npx eslint packages/u1-sim-foundation/src packages/u1-sim-foundation/tests && npx vitest run --coverage packages/u1-sim-foundation
+npx tsc --noEmit && npx eslint packages/*/src packages/*/tests && npx vitest run packages/*/tests
