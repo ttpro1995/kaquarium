@@ -1,6 +1,18 @@
 import { defineConfig } from 'vitest/config';
+import { svelte } from '@sveltejs/vite-plugin-svelte';
 
 export default defineConfig({
+  plugins: [
+    // Compiles U7's Svelte shell for the boot/integration tests that mount
+    // the real App.svelte. No other package imports .svelte, so they are
+    // unaffected.
+    svelte({ compilerOptions: { hmr: false } }),
+  ],
+  resolve: {
+    // Under vitest, resolve svelte's client build so `mount` (and client
+    // component output) is available in the jsdom tests.
+    conditions: ['browser'],
+  },
   test: {
     globals: true,
     environment: 'node',
