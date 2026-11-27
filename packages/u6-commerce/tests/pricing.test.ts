@@ -151,7 +151,7 @@ describe('BR16.1 eight-factor price bands', () => {
     expect(adultFish('x').health).toBeGreaterThanOrEqual(SELL_HEALTH_GATE);
   });
 
-  it('tick-refreshed Fish.value equals the canonical formula', () => {
+  it('canonical priceForFish, fastPriceForFish, and the tick inline loop agree across a genome sweep', () => {
     const species = guppy();
     const catalog = new MemoryCatalog([species]);
     const state = createInitialState(9);
@@ -187,7 +187,7 @@ describe('BR16.1 eight-factor price bands', () => {
       const fish = state.fish[id] as Fish;
       expect(fish.value).toBe(priceForFish(fish, species, 0.8, 1));
       // The exported fast path agrees with the canonical formula too
-      // (deliberate duplication for the NFR1.1 hot loop — see pricing.ts).
+      // (deliberate triplication for the NFR1.1 hot loop — see pricing.ts).
       expect(fastPriceForFish(fish, species, 0.8, 1)).toBe(priceForFish(fish, species, 0.8, 1));
     }
     // Unknown catalogue species: the display cache falls back to 0, never stale.

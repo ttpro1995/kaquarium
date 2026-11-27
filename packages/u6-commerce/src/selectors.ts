@@ -74,7 +74,17 @@ export function bulkPreview(state: GameState, fishIds: readonly string[], specie
   return { items, sold, skipped, total };
 }
 
-/** Confirm-screen projection of a fulfil reward (U7): never mutates. */
+/** Confirm-screen projection of a fulfil reward (U7): never mutates.
+ * Exact mirror of fulfil pricing and eligibility (BR17.2): unknown order,
+ * unknown fish, sick fish (health < 40), a past-deadline or non-open order,
+ * and count/species/health/size mismatches all yield undefined — the same
+ * selections fulfil rejects as UNKNOWN_ENTITY, FISH_UNSELLABLE, or
+ * INVALID_SETTING — and catalogue-missing species is unpriceable, so U7
+ * never shows a reward for an unfulfillable order. The eligible preview
+ * total equals the real fulfil reward. Check order mirrors fulfil's
+ * precedence: unknown fish, then the health gate, then deadline/status/
+ * count, then per-fish order terms.
+ */
 export function orderRewardPreview(
   state: GameState,
   orderId: string,
@@ -83,10 +93,22 @@ export function orderRewardPreview(
 ): number | undefined {
   const order = state.orders.find((o) => o.id === orderId);
   if (order === undefined) return undefined;
+  const deduped = [...new Set(fishIds)];
+  for (const fishId of deduped) {
+    if (state.fish[fishId] === undefined) return undefined;
+  }
+  for (const fishId of deduped) {
+    const fish = state.fish[fishId] as Fish;
+    if (!isSellableHealth(fish.health)) return undefined;
+  }
+  if (state.clock.gameDay > order.deadlineDay) return undefined;
+  if (order.status !== 'open' || deduped.length !== order.quantity) return undefined;
   let sum = 0;
-  for (const fishId of [...new Set(fishIds)]) {
-    const fish = state.fish[fishId];
-    if (fish === undefined) return undefined;
+  for (const fishId of deduped) {
+    const fish = state.fish[fishId] as Fish;
+    if (fish.speciesId !== order.speciesId || fish.health < order.minHealth || fish.sizeCm < order.minSizeCm) {
+      return undefined;
+    }
     const price = priceForFish(
       fish,
       speciesOf(fish.speciesId),

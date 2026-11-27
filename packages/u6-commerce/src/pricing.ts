@@ -79,12 +79,18 @@ function asGenome(fish: Fish): Genome {
  * the species entry is missing so callers reject UNKNOWN_ENTITY instead
  * of pricing against a guessed base.
  *
- * Deliberate duplication (review): fastPriceForFish (commerce.ts) and the
- * inline loop in runCommerceTick repeat this arithmetic for the NFR1.1
- * hot loop instead of calling it. All three copies must agree
+ * Deliberate triplication (review R-02): fastPriceForFish (commerce.ts) and the
+ * inline loop in runCommerceTick repeat this arithmetic instead of calling
+ * it, trading one canonical call path for the NFR1.1 hot-loop budget — the
+ * tick loop additionally hoists per-species market terms out of the loop
+ * and memoizes the immutable genome factor per Fish object (WeakMap), and
+ * the fast path avoids per-fish calls entirely, so collapsing either onto
+ * this canonical form would reintroduce per-fish helper calls in the
+ * 40-fish x 24-ticks/day hot loop. All three copies must agree
  * factor-for-factor — enforced by tests/pricing.test.ts
- * 'tick-refreshed Fish.value equals the canonical formula'. Change one,
- * change all three, then run the sweep.
+ * 'canonical priceForFish, fastPriceForFish, and the tick inline loop
+ * agree across a genome sweep'. Change one, change all three, then run
+ * the sweep.
  */
 export function priceForFish(
   fish: Fish,

@@ -238,3 +238,104 @@ describe('orders.fulfil / notifications.dismiss (US7.1/US12.1)', () => {
     expect(bulked.value).toEqual({ sold: mirror.sold, skipped: 1, total: mirror.total });
   });
 });
+
+describe('orderRewardPreview eligibility (US7.1, R-01)', () => {
+  function previewSetup() {
+    const { kernel, species } = setup();
+    kernel.store.state.fish.a = adultFish('a');
+    kernel.store.state.orders.push({
+      id: 'o1',
+      speciesId: 'guppy',
+      customer: 'hobbyist',
+      quantity: 1,
+      minHealth: 40,
+      minSizeCm: 0.1,
+      multiplier: 1.2,
+      reward: 1,
+      deadlineDay: 9,
+      status: 'open',
+    });
+    return { kernel, species };
+  }
+
+  it('returns undefined for unknown orders and unknown fish', () => {
+    const { kernel, species } = previewSetup();
+    expect(orderRewardPreview(kernel.store.state, 'nope', ['a'], () => species)).toBeUndefined();
+    expect(orderRewardPreview(kernel.store.state, 'o1', ['ghost'], () => species)).toBeUndefined();
+  });
+
+  it('returns undefined for sick fish, mirroring the fulfil health gate', () => {
+    const { kernel, species } = previewSetup();
+    kernel.store.state.fish.sick = adultFish('sick', { health: 20 });
+    expect(orderRewardPreview(kernel.store.state, 'o1', ['sick'], () => species)).toBeUndefined();
+    // The sick selection is rejected by fulfil too, and nothing mutates.
+    const rejected = kernel.dispatch('orders.fulfil', { orderId: 'o1', fishIds: ['sick'] });
+    expect(rejected.ok).toBe(false);
+    expect(kernel.store.state.fish.sick).toBeDefined();
+  });
+
+  it('returns undefined past the deadline and for non-open orders', () => {
+    const { kernel, species } = previewSetup();
+    kernel.store.state.clock.gameDay = 10;
+    expect(orderRewardPreview(kernel.store.state, 'o1', ['a'], () => species)).toBeUndefined();
+    kernel.store.state.clock.gameDay = 1;
+    (kernel.store.state.orders[0] as { status: string }).status = 'fulfilled';
+    expect(orderRewardPreview(kernel.store.state, 'o1', ['a'], () => species)).toBeUndefined();
+  });
+
+  it('returns undefined for count, species, health, and size mismatches', () => {
+    const { kernel, species } = previewSetup();
+    // Count mismatch: order wants 1, two fish offered.
+    kernel.store.state.fish.b = adultFish('b');
+    expect(orderRewardPreview(kernel.store.state, 'o1', ['a', 'b'], () => species)).toBeUndefined();
+    // Species mismatch.
+    kernel.store.state.fish.molly = adultFish('molly', { speciesId: 'molly' });
+    const molly = guppy({ id: 'molly' });
+    expect(
+      orderRewardPreview(kernel.store.state, 'o1', ['molly'], (id) => (id === 'molly' ? molly : species)),
+    ).toBeUndefined();
+    // minHealth mismatch: 45 passes the sell gate but not the order's 50.
+    kernel.store.state.orders.push({
+      id: 'o2',
+      speciesId: 'guppy',
+      customer: 'petShop',
+      quantity: 1,
+      minHealth: 50,
+      minSizeCm: 0.1,
+      multiplier: 1.05,
+      reward: 1,
+      deadlineDay: 9,
+      status: 'open',
+    });
+    kernel.store.state.fish.soft = adultFish('soft', { health: 45 });
+    expect(orderRewardPreview(kernel.store.state, 'o2', ['soft'], () => species)).toBeUndefined();
+    // minSize mismatch: 2cm fish against a 5cm order floor.
+    kernel.store.state.orders.push({
+      id: 'o3',
+      speciesId: 'guppy',
+      customer: 'hobbyist',
+      quantity: 1,
+      minHealth: 40,
+      minSizeCm: 5,
+      multiplier: 1.2,
+      reward: 1,
+      deadlineDay: 9,
+      status: 'open',
+    });
+    kernel.store.state.fish.tiny = adultFish('tiny', { sizeCm: 2 });
+    expect(orderRewardPreview(kernel.store.state, 'o3', ['tiny'], () => species)).toBeUndefined();
+    // Catalogue-missing species is unpriceable.
+    kernel.store.state.fish.ghost = adultFish('ghost', { speciesId: 'extinct' });
+    expect(orderRewardPreview(kernel.store.state, 'o1', ['ghost'], () => species)).toBeUndefined();
+  });
+
+  it('equals the real fulfil reward for an eligible selection and never mutates', () => {
+    const { kernel, species } = previewSetup();
+    const preview = orderRewardPreview(kernel.store.state, 'o1', ['a'], () => species);
+    expect(preview).toBeGreaterThan(0);
+    const outcome = kernel.dispatch('orders.fulfil', { orderId: 'o1', fishIds: ['a'] });
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.value.reward).toBe(preview);
+  });
+});

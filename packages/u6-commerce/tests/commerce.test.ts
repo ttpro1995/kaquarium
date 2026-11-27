@@ -351,4 +351,29 @@ describe('BR19.3 bounded queue (US12.1)', () => {
     expect(kernel.store.state.notifications).toHaveLength(0);
     expect(kernel.store.state.money).toBe(100);
   });
+
+  it('queue cap is tick-enforced: a command drain can transiently exceed 100 and the next notify restores it', () => {
+    const { kernel } = setup();
+    for (let i = 0; i < 100; i++) {
+      kernel.store.state.notifications.push({ id: `n${i}`, priority: 'info', kind: 'k', message: `${i}` });
+    }
+    // A real command drain: buyFish mints one fishBought info via the mapper.
+    const outcome = kernel.dispatch('commerce.buyFish', { speciesId: 'guppy' });
+    expect(outcome.ok).toBe(true);
+    // Transient overflow: the mapper delivered after the last notify-tick cap.
+    expect(kernel.store.state.notifications).toHaveLength(101);
+    // The next notify tick (no sick events, so no new warn) restores the cap,
+    // dropping the oldest info first.
+    runNotifyTick({
+      state: kernel.store.state,
+      tick: 1,
+      now: { day: 1, hour: 5 },
+      rng: { next: () => 0.5, nextInt: (a: number) => a, pick: <T>(items: readonly T[]): T => items[0] as T },
+      species: { get: () => undefined, all: () => [], size: 0 },
+      events: [],
+      catchUp: false,
+    } as never);
+    expect(kernel.store.state.notifications).toHaveLength(100);
+    expect(kernel.store.state.notifications[0]?.id).toBe('n1');
+  });
 });

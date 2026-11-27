@@ -148,6 +148,20 @@ export const commerceNotificationMapper: NotificationMapper = (
  * BR19.3 cap: while over 100, drop the oldest info, else the oldest warn.
  * Criticals are never auto-dropped, so an all-critical queue may
  * transiently exceed 100 — overflow holds criticals only.
+ *
+ * Tick-only timing (review R-03): the cap runs in runNotifyTick, after the
+ * notify-phase warn is minted and before the C4 drain delivers the tick's
+ * mapper notifications. Mapper deliveries on command drains
+ * (dispatchCommand → drainEventBuffer) and on the post-system tick drain
+ * run without a cap, so the queue can transiently exceed 100 between a
+ * drain and the next notify tick. The overflow is bounded by the drain
+ * that minted it — at most one notification per drained event (buyFish ≤1
+ * fishBought info; sellFish ≤1 fishSold info + ≤2 levelUp infos;
+ * sellBulk ≤ eligible count + ≤2 levelUp infos; fulfil ≤1 orderFulfilled
+ * info + ≤2 levelUp infos; dismiss emits nothing; a commerce tick mints ≤
+ * open-board orderExpired warns plus hatch-XP levelUps) — and the next
+ * notify tick restores ≤100 (critical-only overflow excepted). Pinned by
+ * commerce.test.ts 'queue cap is tick-enforced: ...'.
  */
 export function enforceQueueCap(state: GameState): void {
   while (state.notifications.length > MAX_NOTIFICATIONS) {

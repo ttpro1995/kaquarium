@@ -84,13 +84,14 @@ export function refreshFishValues(
  * remains the canonical readable implementation; the suite asserts
  * both agree across a genome sweep.
  *
- * Deliberate duplication (review): this function and the inline loop in
+ * Deliberate triplication (review R-02): this function and the inline loop in
  * runCommerceTick repeat the priceForFish arithmetic instead of calling
  * it, trading one canonical call path for the NFR1.1 hot-loop budget.
  * All three copies must agree factor-for-factor — enforced by
- * tests/pricing.test.ts 'tick-refreshed Fish.value equals the canonical
- * formula', which asserts both fast paths equal the canonical formula
- * across a genome sweep. Change one, change all three, then run the sweep.
+ * tests/pricing.test.ts 'canonical priceForFish, fastPriceForFish, and
+ * the tick inline loop agree across a genome sweep', which asserts both
+ * fast paths equal the canonical formula across a genome sweep. Change
+ * one, change all three, then run the sweep.
  */
 export function fastPriceForFish(
   fish: { sizeCm: number; stage: Fish['stage']; health: number; genome: Record<string, unknown> },
@@ -166,11 +167,13 @@ export function runCommerceTick(ctx: TickContext): void {
     );
   }
   // Per-tick value refresh inline: property reads and arithmetic only, no
-  // per-fish calls (NFR1.1). Deliberate duplication (review): this loop is
+  // per-fish calls (NFR1.1). Deliberate triplication (review R-02): this loop is
   // the third copy of the priceForFish arithmetic (canonical form in
   // pricing.ts, fastPriceForFish above); the pricing suite asserts all
-  // three agree across a genome sweep (see the duplication note on
-  // fastPriceForFish). Per-species market terms hoist out of
+  // three agree across a genome sweep (see the triplication note on
+  // fastPriceForFish and tests/pricing.test.ts 'canonical priceForFish,
+  // fastPriceForFish, and the tick inline loop agree across a genome
+  // sweep'). Per-species market terms hoist out of
   // the loop; immutable genome terms memoize per Fish object.
   const cache: Record<string, { entry: Species | undefined; base: number }> = {};
   const market = state.market;
